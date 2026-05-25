@@ -18,6 +18,7 @@ pd = scanner.pd
 np = scanner.np
 
 _original_add_core_value_calculations = scanner.add_core_value_calculations
+_original_build_universe = scanner.build_universe
 _original_build_v10_6_views = scanner.build_v10_6_views_from_filtered_master
 _original_finalize_slim_workbook_views = scanner.finalize_slim_workbook_views
 _original_get_column_dictionary = scanner.get_column_dictionary
@@ -75,6 +76,11 @@ def yfinance_download_to_long(
                 long = data.reset_index()
                 long["Symbol"] = chunk[0]
 
+            if "Date" not in long.columns:
+                for date_col in ["level_0", "index"]:
+                    if date_col in long.columns:
+                        long = long.rename(columns={date_col: "Date"})
+                        break
             long["Symbol"] = long["Symbol"].map(scanner.normalize_symbol)
             long["Date"] = pd.to_datetime(long["Date"])
             wanted = ["Date", "Symbol", "Open", "High", "Low", "Close", "Adj Close", "Volume"]
@@ -95,6 +101,13 @@ def yfinance_download_to_long(
     downloaded_symbols = sorted(set(out["Symbol"].dropna().unique())) if "Symbol" in out.columns else []
     out.attrs["downloaded_symbols"] = downloaded_symbols
     out.attrs["failed_symbols"] = sorted(set(tickers) - set(downloaded_symbols))
+    return out
+
+
+def build_universe(universe):
+    out = _original_build_universe(universe)
+    if "is_extra" not in out.columns:
+        out["is_extra"] = 0
     return out
 
 
@@ -318,6 +331,7 @@ def get_column_dictionary(columns):
 
 def apply_patches() -> None:
     scanner.LAST_REFRESH_FAILED_SYMBOLS = []
+    scanner.build_universe = build_universe
     scanner.yfinance_download_to_long = yfinance_download_to_long
     scanner.load_or_update_prices = load_or_update_prices
     scanner.read_fundamentals_cache = read_fundamentals_cache
