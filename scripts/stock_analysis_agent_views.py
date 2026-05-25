@@ -9,6 +9,13 @@ _original_prepare_price_features = None
 _original_latest_performance = None
 _original_make_ranked_views = None
 _original_get_column_dictionary = None
+_original_finalize_slim_workbook_views = None
+
+AGENT_VIEW_NAMES = [
+    "Buffett Quality", "Undervalued Quality", "Largest Win Opportunity",
+    "Quality 2W Declines", "Quality 1M Declines", "Quality 3M Declines",
+    "Basing Near Support", "Support Resistance Review", "Management Proxy Review",
+]
 
 
 def prepare_price_features(prices):
@@ -198,10 +205,20 @@ def get_column_dictionary(columns):
     return dictionary
 
 
+def finalize_slim_workbook_views(views, dfagg):
+    """Retain agent research sheets after the legacy slim-workbook selection."""
+    final = _original_finalize_slim_workbook_views(views, dfagg)
+    for sheet in AGENT_VIEW_NAMES:
+        if sheet in views:
+            final[sheet] = views[sheet]
+    return final
+
+
 def install_agent_views(target_scanner) -> None:
     global scanner, pd, np
     global _original_prepare_price_features, _original_latest_performance
     global _original_make_ranked_views, _original_get_column_dictionary
+    global _original_finalize_slim_workbook_views
     scanner = target_scanner
     pd = scanner.pd
     np = scanner.np
@@ -209,10 +226,12 @@ def install_agent_views(target_scanner) -> None:
     _original_latest_performance = scanner.latest_performance
     _original_make_ranked_views = scanner.make_ranked_views
     _original_get_column_dictionary = scanner.get_column_dictionary
+    _original_finalize_slim_workbook_views = scanner.finalize_slim_workbook_views
     scanner.prepare_price_features = prepare_price_features
     scanner.latest_performance = latest_performance
     scanner.make_ranked_views = make_ranked_views
     scanner.get_column_dictionary = get_column_dictionary
+    scanner.finalize_slim_workbook_views = finalize_slim_workbook_views
     expert_columns = [
         "Symbol", "Security", "Index", "Sector", "price_status", "Marketcap", "capMil",
         "last_close", "two_week_close", "two_week_performance", "one_month_performance",
@@ -225,11 +244,7 @@ def install_agent_views(target_scanner) -> None:
         "minCovid_filled", "resistance_1m", "resistance_6m", "nearest_support_distance_pct",
         "near_support_10pct", "RSI", "watch_reason",
     ]
-    for sheet in [
-        "Buffett Quality", "Undervalued Quality", "Largest Win Opportunity",
-        "Quality 2W Declines", "Quality 1M Declines", "Quality 3M Declines",
-        "Basing Near Support", "Support Resistance Review", "Management Proxy Review",
-    ]:
+    for sheet in AGENT_VIEW_NAMES:
         scanner.SHEET_SPECIFIC_COLUMNS[sheet] = expert_columns
     scanner.SHEET_SPECIFIC_COLUMNS["Full Master"] = list(
         dict.fromkeys(scanner.SHEET_SPECIFIC_COLUMNS.get("Full Master", []) + expert_columns)
