@@ -28,7 +28,7 @@ jobs:
       - name: Download and validate prices
         env:
           TIINGO_API_KEY: ${{ secrets.TIINGO_API_KEY }}
-        run: python price_feed.py
+        run: |\n          mkdir -p outputs\n          set -o pipefail\n          python price_feed.py 2>&1 | tee outputs/run.log
       - uses: actions/upload-artifact@v4
         with:
           name: stock-price-feed
