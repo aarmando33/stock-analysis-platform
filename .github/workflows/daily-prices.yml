@@ -28,11 +28,14 @@ jobs:
       - name: Download and validate prices
         env:
           TIINGO_API_KEY: ${{ secrets.TIINGO_API_KEY }}
-        run: |\n          mkdir -p outputs\n          set -o pipefail\n          python price_feed.py 2>&1 | tee outputs/run.log
+        run: |
+          mkdir -p outputs
+          set -o pipefail
+          python price_feed.py 2>&1 | tee outputs/run.log
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: stock-price-feed
           path: outputs/
           retention-days: 30
           if-no-files-found: error
-
