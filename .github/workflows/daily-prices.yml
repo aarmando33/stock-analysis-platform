@@ -9,7 +9,7 @@ on:
       - "tickers.csv"
       - ".github/workflows/daily-prices.yml"
   schedule:
-    - cron: "30 22 * * 1-5"
+    - cron: "30 21 * * 1-5"
 
 permissions:
   contents: read
