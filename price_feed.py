@@ -122,6 +122,8 @@ def main() -> None:
     rows = []
     for symbol in symbols:
         frame = history[history["Symbol"].eq(symbol)].copy()
+        frame["Close"] = pd.to_numeric(frame["Close"], errors="coerce")
+        frame = frame.dropna(subset=["Close"])
         if frame.empty:
             rows.append({"Symbol": symbol, "price_status": "MISSING_PRICE"})
             continue
