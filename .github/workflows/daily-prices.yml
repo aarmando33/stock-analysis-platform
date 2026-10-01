@@ -2,6 +2,12 @@ name: Daily stock prices
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "price_feed.py"
+      - "tickers.csv"
+      - ".github/workflows/daily-prices.yml"
   schedule:
     - cron: "30 22 * * 1-5"
 
@@ -29,3 +35,4 @@ jobs:
           path: outputs/
           retention-days: 30
           if-no-files-found: error
+
