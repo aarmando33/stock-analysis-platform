@@ -1,6 +1,6 @@
 # Stock Buy/Sell Monitor price feed
 
-This repository job downloads split-adjusted daily OHLCV history for the canonical 160-ticker monitor universe after the U.S. market closes.
+This repository job downloads split-adjusted daily OHLCV history for the 160-ticker core universe plus permanent monitor names LRCX and AMAT after the U.S. market closes.
 
 The primary source is yfinance. If a `TIINGO_API_KEY` repository secret is present, Tiingo fills symbols Yahoo did not return. The job rejects symbols whose last observation trails the newest completed session in the same run.
 
