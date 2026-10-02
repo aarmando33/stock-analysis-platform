@@ -157,8 +157,8 @@ def main() -> None:
     }
     pd.Series(summary).to_json(OUT / "price_audit.json", indent=2)
     print(summary)
-    if summary["ok"] == 0:
-        raise SystemExit("No current prices were validated")
+    if summary["ok"] < int(len(symbols) * 0.90):
+        raise SystemExit("Price coverage below 90%; refusing to mark this run successful")
 
 
 if __name__ == "__main__":
