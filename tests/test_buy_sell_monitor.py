@@ -115,6 +115,41 @@ class Calculations(unittest.TestCase):
         self.assertEqual(latest_session('2026-07-03T21:00:00Z'),'2026-07-02')
         self.assertEqual(latest_session('2026-10-02T19:00:00Z'),'2026-10-01')
 
+    def test_closing_range_alias_and_volume_label(self):
+        g=history();o=calculate(g,g.Close.iloc[-1],'2026-10-02')
+        self.assertEqual(o['52W Win%'],o['52W Closing-Range Win%'])
+        self.assertIn('20D Net Volume %',o)
+        self.assertNotIn('OBV20 %',o)
+
+    def test_defended_support_requires_recent_defense(self):
+        g=history()
+        o=calculate(g,g.Close.iloc[-1],'2026-10-02')
+        if o['Short Support Tests']>=2:
+            self.assertEqual(o['Support Defended'],
+                             abs(g.Low.tail(10).min()-o['Short Support'])/g.Close.iloc[-1]*100<=2 and
+                             g.Close.iloc[-1]/g.Low.tail(10).min()-1>=.02 and
+                             g.Close.iloc[-1]>=o['Short Support'])
+
+    def test_bottom_insufficient_when_research_missing(self):
+        g=history(descending=True);o=calculate(g,g.Close.iloc[-1],'2026-10-02')
+        if o['Drawdown From High %']<=-15 or o['Breakdown Status']!='None':
+            self.assertEqual(o['Bottom/Falling-Knife Status'],'Insufficient evidence')
+
+    def test_owned_warning_precedes_coverage_gate(self):
+        g=history()
+        # Force negative flow in a sourced owned position without research context.
+        g['Close']=np.linspace(140,100,len(g)); g['Open']=g.Close;g['High']=g.Close+1;g['Low']=g.Close-1
+        o=calculate(g,g.Close.iloc[-1],'2026-10-02',position={'Qty':1,'Cost Basis':120,'Source':'fixture'})
+        self.assertIn(o['Overall Signal/Action'],['Raise Protection','Trim Watch','Breakdown Warning','Falling Knife'])
+
+    def test_basing_uses_high_denominator_ten_percent(self):
+        g=history()
+        g.loc[g.index[-21:],'High']=110
+        g.loc[g.index[-21:],'Low']=99
+        g.loc[g.index[-21:],'Close']=104
+        o=calculate(g,104,'2026-10-02')
+        self.assertAlmostEqual(o['Range Compression 21D %'],10.0)
+
 
 class Pipeline(unittest.TestCase):
     def setUp(self):
@@ -148,6 +183,34 @@ class Pipeline(unittest.TestCase):
         f=pd.read_csv(self.p/'prices_latest.csv');f['Current Price']/=2;f.to_csv(self.p/'prices_latest.csv',index=False)
         self.assertEqual(self.go()['counts']['Usable'],0)
         self.assertEqual(self.go()['views']['Master'][0]['price_status'],'PRICE_HISTORY_MISMATCH')
+
+    def test_padded_history_and_four_decimal_feed_rounding(self):
+        g=pd.read_csv(self.p/'price_history.csv.gz')
+        blank=g.iloc[[0]].copy();blank[['Open','High','Low','Close','Volume']]=np.nan
+        g=pd.concat([blank,g],ignore_index=True)
+        g.to_csv(self.p/'price_history.csv.gz',index=False,compression='gzip')
+        f=pd.read_csv(self.p/'prices_latest.csv')
+        f['Current Price']=f['Current Price'].round(4)
+        f.to_csv(self.p/'prices_latest.csv',index=False)
+        self.assertEqual(self.go()['counts']['Usable'],1)
+
+    def test_structured_freshness_failure(self):
+        (self.p/'price_audit.json').write_text(json.dumps({'latest_market_date':'2026-10-01','expected_tickers':1}))
+        x=self.go()
+        self.assertEqual(x['status'],'INCOMPLETE — CURRENT-DATE PRICE FEED UNAVAILABLE')
+        self.assertEqual(x['failure']['code'],'FEED_SESSION_MISMATCH')
+        self.assertEqual(x['counts']['Usable'],0)
+
+    def test_benchmark_provenance_validation(self):
+        f=self.p/'bench.csv'
+        dates=pd.bdate_range(end='2026-10-02',periods=30)
+        pd.DataFrame({'Date':dates,'Symbol':['SPY']*30,'Close':np.linspace(100,110,30),
+                      'Source':['fixture']*30,'Price Basis':['adjusted close']*30}).to_csv(f,index=False)
+        x=self.go(benchmarks_path=f)
+        self.assertEqual(x['counts']['Usable'],1)
+        bad=pd.read_csv(f);bad.loc[0,'Close']=-1;bad.to_csv(f,index=False)
+        with self.assertRaisesRegex(ValueError,'positive finite'):self.go(benchmarks_path=f)
+
 
     def test_future_context(self):
         f=self.p/'context.csv';pd.DataFrame([{'Ticker':'TEST','Source':'test','As Of':'2026-10-03','Raw Evidence':'test'}]).to_csv(f,index=False)
