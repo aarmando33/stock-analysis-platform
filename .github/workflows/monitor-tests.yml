@@ -1,9 +1,23 @@
 name: Monitor calculation tests
 on:
   pull_request:
-    paths: ['buy_sell_monitor.py', 'tests/**', 'requirements-monitor.txt', '.github/workflows/monitor-tests.yml']
+    paths:
+      - 'buy_sell_monitor.py'
+      - 'export_monitor.py'
+      - 'RUN_MONITOR.ps1'
+      - 'tests/**'
+      - 'requirements-monitor.txt'
+      - 'tickers.csv'
+      - '.github/workflows/monitor-tests.yml'
   push:
-    paths: ['buy_sell_monitor.py', 'tests/**', 'requirements-monitor.txt', '.github/workflows/monitor-tests.yml']
+    paths:
+      - 'buy_sell_monitor.py'
+      - 'export_monitor.py'
+      - 'RUN_MONITOR.ps1'
+      - 'tests/**'
+      - 'requirements-monitor.txt'
+      - 'tickers.csv'
+      - '.github/workflows/monitor-tests.yml'
 permissions:
   contents: read
 jobs:
@@ -16,3 +30,16 @@ jobs:
           python-version: '3.12'
       - run: pip install -r requirements-monitor.txt
       - run: python -m unittest discover -s tests -v
+      - uses: actions/upload-artifact@v4
+        with:
+          name: monitor-v2-source-${{ github.sha }}
+          path: |
+            buy_sell_monitor.py
+            export_monitor.py
+            RUN_MONITOR.ps1
+            requirements-monitor.txt
+            tickers.csv
+            MONITOR_CHANGES.md
+            tests/test_buy_sell_monitor.py
+          retention-days: 30
+          if-no-files-found: error
