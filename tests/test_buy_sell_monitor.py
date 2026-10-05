@@ -77,7 +77,7 @@ class Calculations(unittest.TestCase):
     def test_price_volume_used_without_obv_origin(self):
         g=history(descending=True);g['Close']=np.arange(300,0,-1.)
         o=calculate(g,g.Close.iloc[-1],'2026-10-02')
-        self.assertEqual(o['OBV20 %'],-100)
+        self.assertEqual(o['20D Net Volume %'],-100)
         self.assertEqual(o['Money Flow'],'Leaving')
 
     def test_missing_volume_is_unavailable(self):
