@@ -160,12 +160,14 @@ def fundamental_evidence(raw):
 def calculate(history,price,session,benchmark=None,sector=None,context=None,position=None):
     g=history[history.Date<=pd.Timestamp(session)].sort_values('Date').copy()
     c=g.Close; current=float(price); out={}
-    for label,n in [('1W %',5),('2W %',10),('1M %',20),('3M %',63),('6M %',126)]: out[label]=ret(c,n)
+    for label,n in [('1W %',5),('2W %',10),('1M %',20),('3M %',63),('6M %',126)]:
+        out[label]=100*(current/c.iloc[-n-1]-1) if len(c)>n and c.iloc[-n-1]>0 else NAN
     out['MomentumRaw']=float(np.nanmean([out['1M %'],out['3M %']]))
     previous_year=g[g.Date.dt.year<pd.Timestamp(session).year]
     out['YTD %']=100*(current/previous_year.Close.iloc[-1]-1) if len(previous_year) else NAN
     out['Primary Win%'],out['price_suggest_80']=range_position(g[g.Date>='2020-03-01'].Close,current)
-    out['52W Win%'],_=range_position(g[g.Date>=pd.Timestamp(session)-pd.Timedelta(days=365)].Close,current)
+    out['52W Closing-Range Win%'],_=range_position(g[g.Date>=pd.Timestamp(session)-pd.Timedelta(days=365)].Close,current)
+    out['52W Win%']=out['52W Closing-Range Win%']
     for n in [20,50,100,200]:
         out[f'{n}D MA']=float(c.tail(n).mean()) if len(c)>=n else NAN
         old=c.iloc[:-5].tail(n).mean() if len(c)>=n+5 else NAN
@@ -189,7 +191,7 @@ def calculate(history,price,session,benchmark=None,sector=None,context=None,posi
     obv=signed.cumsum();out['OBV']=float(obv.iloc[-1]) if volume_ok else NAN
     # Scale signed volume by positive volume, not by arbitrary OBV origin.
     flow20=100*signed.tail(20).sum()/v.tail(20).sum() if volume_ok and v.tail(20).sum()>0 else NAN
-    out['OBV20 %']=float(flow20);out['OBV20 Basis']='20-session net signed volume / total volume'
+    out['20D Net Volume %']=float(flow20);out['20D Net Volume Basis']='20-session net signed volume / total volume'
     out['Money Flow']=('Unavailable' if not finite(flow20) else 'Accumulating' if flow20>=15 else
                        'Entering' if flow20>5 else 'Leaving' if flow20<=-15 else 'Distributing' if flow20<-5 else 'Neutral')
     out['Volume Confirmation']=('Unavailable' if not volume_ok else 'Strong' if out['Relative Volume']>=1.5 else 'Normal' if out['Relative Volume']>=.8 else 'Light')
@@ -206,13 +208,19 @@ def calculate(history,price,session,benchmark=None,sector=None,context=None,posi
     out['Support Proximity']=proximity(out['Distance to Support %'])
     out['Resistance Proximity']=proximity(out['Distance to Resistance %'])
     high21=g.High.tail(21).max();low21=g.Low.tail(21).min()
-    compression=100*(high21/low21-1) if len(g)>=21 and low21>0 else NAN
+    compression=100*(high21-low21)/high21 if len(g)>=21 and high21>0 else NAN
     out['Range Compression 21D %']=compression
-    basic=finite(compression) and compression<=12 and abs(out['1M %'])<=8
+    basic=finite(compression) and compression<=10 and abs(out['1M %'])<=8
     higher_low=len(g)>=21 and g.Low.tail(10).min()>g.Low.iloc[-21:-10].min()
     volatility_contracting=len(av)>=21 and finite(av.iloc[-21]) and av.iloc[-1]<av.iloc[-21]
-    support_holds=finite(support) and out['Short Support Tests']>=2
-    out['Basing Status']=('Confirmed Base' if basic and higher_low and support_holds and volatility_contracting and out['Volume Contraction Ratio']<1 else 'Range Compressing' if basic else 'Not Basing')
+    recent_low=float(g.Low.tail(10).min()) if len(g)>=10 else NAN
+    support_recent_test=finite(support) and finite(recent_low) and abs(recent_low-support)/current*100<=2
+    support_rebound=finite(recent_low) and recent_low>0 and current/recent_low-1>=0.02
+    support_holds=bool(finite(support) and out['Short Support Tests']>=2 and support_recent_test and support_rebound and current>=support)
+    out['Support Defended']=support_holds
+    source_text=str(out.get('Short Support Source','Unavailable'))
+    out['Support Timeframe']=('5-session' if '5-session' in source_text else '21-session' if '21-session' in source_text else '20-session MA' if '20-session MA' in source_text else 'Unavailable')
+    out['Basing Status']=('Confirmed Base' if basic and higher_low and support_holds and volatility_contracting and finite(out['Volume Contraction Ratio']) and out['Volume Contraction Ratio']<1 else 'Range Compressing' if basic else 'Not Basing')
     prior_high=g.High.iloc[-22:-1].max() if len(g)>=22 else NAN
     prior_low=g.Low.iloc[-22:-1].min() if len(g)>=22 else NAN
     breakout=finite(prior_high) and current>prior_high
@@ -255,47 +263,62 @@ def calculate(history,price,session,benchmark=None,sector=None,context=None,posi
            100 if out['50D MA Slope %']>0 else 0 if finite(out['50D MA Slope %']) else NAN,
            100 if out['MACD Histogram']>0 else 0, rotation if all(finite(x) for x in relative) else NAN]
     flow_score={'Accumulating':100,'Entering':80,'Neutral':50,'Distributing':20,'Leaving':0}.get(out['Money Flow'],NAN)
-    buckets={'Location':[out['Primary Win%'],out['52W Win%'],valuation],
+    buckets={'Location':[out['Primary Win%'],out['52W Closing-Range Win%'],valuation],
              'Support/RR':[out['Short Support Strength'],clip(rr/3*100) if finite(rr) else NAN],
              'Trend/RS':trend,'Fundamentals':[fundamental,revisions],
              'Flow':[flow_score,context.get('Institutional/Insider Score',NAN)],'Environment':[environment]}
-    points=0;coverage=0
+    points=0.0;coverage=0.0
     for name,values in buckets.items():
-        points+=WEIGHTS[name]*evidence_mean(values)/100
-        present=sum(finite(x) for x in values)
-        if name=='Fundamentals' and finite(fundamental):present-=1-context['Fundamental Input Coverage %']/100
-        coverage+=WEIGHTS[name]*present/len(values)
-        out[name+' Points']=round(WEIGHTS[name]*evidence_mean(values)/100,2)
+        bucket_points=WEIGHTS[name]*evidence_mean(values)/100
+        if name=='Fundamentals':
+            fundamental_fraction=context['Fundamental Input Coverage %']/100 if finite(fundamental) else 0
+            present_fraction=(fundamental_fraction + (1 if finite(revisions) else 0))/2
+        else:
+            present_fraction=sum(finite(x) for x in values)/len(values)
+        points+=bucket_points
+        coverage+=WEIGHTS[name]*present_fraction
+        out[name+' Points']=round(bucket_points,2)
+        out[name+' Coverage %']=round(100*present_fraction,1)
     out['Opportunity Score']=round(clip(points-(12 if breakdown else 0)-(5 if out['RSI(14)']>75 else 0)),1)
     out['Evidence Coverage %']=round(coverage,1)
     confirms=[100 if support_holds else 0,100 if higher_low else 0,
-              100 if confirmed or out['Relative Volume']>=1.2 else 0 if volume_ok else NAN,
+              100 if confirmed or (finite(out['Relative Volume']) and out['Relative Volume']>=1.2) else 0 if volume_ok else NAN,
               rotation if all(finite(x) for x in relative) else NAN,fundamental,revisions,
               flow_score,valuation,clip(rr/3*100) if finite(rr) else NAN,
               100 if out['MACD Histogram']>0 else 0]
     out['Setup Confidence']=round(evidence_mean(confirms),1)
+    out['Setup Confidence Coverage %']=round(100*sum(finite(x) for x in confirms)/len(confirms),1)
     bottom=[100 if higher_low and not breakdown else 0,
             100 if volatility_contracting else 0,
             flow_score,100 if out['Momentum Status']=='Improving' else 0,
             rotation if all(finite(x) for x in relative) else NAN,fundamental,revisions]
     out['Bottom Confidence']=round(evidence_mean(bottom),1)
+    out['Bottom Confidence Coverage %']=round(100*sum(finite(x) for x in bottom)/len(bottom),1)
     bc=out['Bottom Confidence']
-    status=('Strong bottom evidence' if bc>=80 else 'Bottom developing / favorable' if bc>=65 else
+    research=[rotation if all(finite(x) for x in relative) else NAN,fundamental,revisions,valuation,
+              context.get('Institutional/Insider Score',NAN),environment]
+    out['Research Coverage %']=round(100*sum(finite(x) for x in research)/len(research),1)
+    status=('Insufficient evidence' if out['Research Coverage %']<50 else
+            'Strong bottom evidence' if bc>=80 else 'Bottom developing / favorable' if bc>=65 else
             'Stabilization; confirmation needed' if bc>=50 else 'Weak/unconfirmed bounce' if bc>=35 else 'Falling-knife / breakdown risk')
     out['Bottom/Falling-Knife Status']=status if out['Drawdown From High %']<=-15 or breakdown else 'Not a bottom setup'
     if breakdown: action='Falling Knife' if bc<35 else 'Breakdown Warning'
-    elif coverage<75: action='Hold/Wait'
-    elif confirmed and out['Setup Confidence']>=65: action='Confirmed Breakout'
-    elif support_holds and rr>=2 and out['Opportunity Score']>=70 and out['Setup Confidence']>=65 and bc>=50:
-        action='Strong Buy Zone' if out['Opportunity Score']>=80 else 'Buy/Accumulate'
-    elif out['Support Proximity'] in ['Near','Approaching']: action='Approaching Buy Zone'
     elif position and out['Resistance Proximity']=='Strong Proximity' and out['RSI(14)']>68: action='Trim Watch'
     elif position and out['Money Flow'] in ['Leaving','Distributing']: action='Raise Protection'
+    elif coverage<75: action='Hold/Wait'
+    elif confirmed and out['Setup Confidence']>=65: action='Confirmed Breakout'
+    elif support_holds and finite(rr) and rr>=2 and out['Opportunity Score']>=70 and out['Setup Confidence']>=65 and bc>=50:
+        action='Strong Buy Zone' if out['Opportunity Score']>=80 else 'Buy/Accumulate'
+    elif out['Support Proximity'] in ['Near','Approaching']: action='Approaching Buy Zone'
     elif out['Resistance Proximity'] in ['Near','Approaching']: action='Hold for Breakout'
     else: action='Hold/Wait'
     out['Overall Signal/Action']=action
-    out['Action Reason']=('Missing evidence limits action; coverage '+str(out['Evidence Coverage %'])+'%' if coverage<75 and not breakdown else
-                          f"{out['Breakdown Status']}; support {out['Support Proximity']}; R/R {round(rr,2) if finite(rr) else 'unavailable'}; confidence {out['Setup Confidence']}")
+    if action in ['Trim Watch','Raise Protection']:
+        out['Action Reason']=f"Owned-position risk management: {action}; resistance {out['Resistance Proximity']}; flow {out['Money Flow']}"
+    elif coverage<75 and not breakdown:
+        out['Action Reason']='Missing evidence limits buy action; coverage '+str(out['Evidence Coverage %'])+'%'
+    else:
+        out['Action Reason']=f"{out['Breakdown Status']}; support {out['Support Proximity']}; R/R {round(rr,2) if finite(rr) else 'unavailable'}; confidence {out['Setup Confidence']}"
     out['Owned/Watch']='Owned' if position else 'Ownership/Cost Basis Unavailable'
     qty=position.get('Qty',NAN) if position else NAN;basis=position.get('Cost Basis',NAN) if position else NAN
     out.update({'Qty':qty,'Cost Basis':basis,'Current Value':qty*current if finite(qty) else NAN,
@@ -316,6 +339,23 @@ def latest_session(now=None):
     return session.strftime('%Y-%m-%d')
 
 
+def structured_failure(feed, universe_count, session, code, detail, audit=None):
+    feed=Path(feed)
+    hashes={}
+    for name in ['price_audit.json','prices_latest.csv','price_history.csv.gz']:
+        path=feed/name
+        if path.exists():
+            hashes[name]=hashlib.sha256(path.read_bytes()).hexdigest()
+    empty={k:[] for k in ['Master','Scanner','Top Opportunities','At-Approach Support','At-Approach Resistance',
+                          'Breakouts','Breakdowns','Owned Positions','Added Names']}
+    return {'session':session,'historical':False,'status':'INCOMPLETE — CURRENT-DATE PRICE FEED UNAVAILABLE',
+            'failure':{'code':code,'detail':detail,'requested_session':session,
+                       'feed_session':(audit or {}).get('latest_market_date')},
+            'source_sha256':hashes,
+            'counts':{'Expected':universe_count,'Usable':0,'Data Limited':universe_count,'Triggered':0},
+            'views':empty,'calculations':[],'context':[],'positions':[]}
+
+
 def run(feed,universe,session,context_path=None,positions_path=None,benchmarks_path=None,historical=False):
     feed=Path(feed);lat=pd.read_csv(feed/'prices_latest.csv')
     history=pd.read_csv(feed/'price_history.csv.gz',parse_dates=['Date'])
@@ -323,8 +363,10 @@ def run(feed,universe,session,context_path=None,positions_path=None,benchmarks_p
     expected=pd.read_csv(universe).Symbol.astype(str).str.upper().tolist()
     if len(set(expected))!=len(expected): raise ValueError('Duplicate universe symbols')
     if lat.Symbol.duplicated().any() or history.duplicated(['Symbol','Date']).any(): raise ValueError('Duplicate source rows')
-    if audit['latest_market_date']!=session: raise ValueError('INCOMPLETE â€” CURRENT-DATE PRICE FEED UNAVAILABLE')
-    if not historical and session!=latest_session(): raise ValueError('Stale current-session request')
+    if audit['latest_market_date']!=session:
+        return structured_failure(feed,len(expected),session,'FEED_SESSION_MISMATCH',f"feed session {audit.get('latest_market_date')} does not match requested {session}",audit)
+    if not historical and session!=latest_session():
+        return structured_failure(feed,len(expected),session,'REQUEST_SESSION_NOT_LATEST',f"requested {session}; latest completed session is {latest_session()}",audit)
     if set(lat.Symbol)!=set(expected): raise ValueError('Feed/universe reconciliation failed')
     if audit['expected_tickers']!=len(expected): raise ValueError('Audit/universe count mismatch')
     if set(history.Symbol)-set(expected):raise ValueError('Unexpected history symbols')
@@ -342,10 +384,19 @@ def run(feed,universe,session,context_path=None,positions_path=None,benchmarks_p
         if positions.index.duplicated().any(): raise ValueError('Duplicate ownership symbols; aggregate transactions explicitly')
         if not {'Source','As Of','Confirmed','Qty','Cost Basis'}.issubset(positions.columns): raise ValueError('Ownership provenance required')
         if (pd.to_datetime(positions['As Of'])>pd.Timestamp(session)).any(): raise ValueError('Future ownership prohibited')
-    if not benchmarks.empty and benchmarks.duplicated(['Symbol','Date']).any(): raise ValueError('Duplicate benchmarks')
+    if not benchmarks.empty:
+        required_benchmark={'Date','Symbol','Close','Source','Price Basis'}
+        if not required_benchmark.issubset(benchmarks.columns): raise ValueError('Benchmarks require Date, Symbol, Close, Source and Price Basis')
+        if benchmarks.duplicated(['Symbol','Date']).any(): raise ValueError('Duplicate benchmarks')
+        if benchmarks['Source'].isna().any() or benchmarks['Source'].astype(str).str.strip().eq('').any(): raise ValueError('Benchmark source required')
+        if not benchmarks['Price Basis'].astype(str).str.lower().str.startswith('adjusted').all(): raise ValueError('Benchmark price basis must be adjusted')
+        if benchmarks['Close'].isna().any() or (~np.isfinite(pd.to_numeric(benchmarks['Close'],errors='coerce'))).any() or (pd.to_numeric(benchmarks['Close'],errors='coerce')<=0).any(): raise ValueError('Benchmark closes must be positive finite values')
+        if (benchmarks['Date']>pd.Timestamp(session)).any(): raise ValueError('Future benchmark data prohibited')
+        ordered=benchmarks.sort_values(['Symbol','Date']).reset_index(drop=True)
+        if not benchmarks.reset_index(drop=True)[['Symbol','Date']].equals(ordered[['Symbol','Date']]): raise ValueError('Benchmarks must be ordered by Symbol, Date')
     rows=[]
     for sym in expected:
-        lr=lat[lat.Symbol==sym].iloc[0];g=history[history.Symbol==sym]
+        lr=lat[lat.Symbol==sym].iloc[0];g=history[history.Symbol==sym].dropna(subset=['Close']).sort_values('Date')
         row={'Ticker':sym,'Price':lr['Current Price'],'Price Date':lr['Price Date'],
              'Price Provider':lr['Provider'],'Price Basis':lr['Price Basis'],'price_status':lr['price_status'],
              'Universe':'Added' if sym in ['LRCX','AMAT','ETN','PWR','CIEN','ADI','ZS','MCHP'] else 'Core'}
@@ -353,13 +404,18 @@ def run(feed,universe,session,context_path=None,positions_path=None,benchmarks_p
             required=['Close','Open','High','Low']
             if g.empty or g.Date.max()!=pd.Timestamp(session) or str(row['Price Date'])!=session:
                 row['price_status']='STALE_OR_MISSING_HISTORY'
-            elif not finite(row['Price']) or row['Price']<=0 or g[required].isna().any().any() or (g[required]<=0).any().any() or (g.High<g.Low).any() or (g.High<g.Close).any() or (g.Low>g.Close).any():
+            elif not finite(row['Price']) or row['Price']<=0 or g[required].isna().any().any() or (g[required]<=0).any().any():
                 row['price_status']='INVALID_HISTORY'
             elif not str(row['Price Basis']).lower().startswith('adjusted'):
                 row['price_status']='UNVERIFIED_PRICE_BASIS'
-            elif not np.isclose(g.sort_values('Date').Close.iloc[-1],row['Price'],rtol=1e-5):
-                row['price_status']='PRICE_HISTORY_MISMATCH'
-            elif len(g)<30: row['price_status']='INSUFFICIENT_HISTORY'
+            else:
+                tol=1e-10*g[['High','Low','Close']].abs().max(axis=1).clip(lower=1)
+                if ((g.High+tol<g.Low)|(g.High+tol<g.Close)|(g.Low-tol>g.Close)).any():
+                    row['price_status']='INVALID_HISTORY'
+                elif round(float(g.Close.iloc[-1]),4)!=round(float(row['Price']),4):
+                    row['price_status']='PRICE_HISTORY_MISMATCH'
+                elif len(g)<30:
+                    row['price_status']='INSUFFICIENT_HISTORY'
         if row['price_status']=='OK':
             ctx=context.loc[sym].to_dict() if sym in context.index else {}
             pos=positions.loc[sym].to_dict() if sym in positions.index and str(positions.loc[sym,'Confirmed']).lower()=='true' else None
