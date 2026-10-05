@@ -177,7 +177,9 @@ class Pipeline(unittest.TestCase):
 
     def test_stale_gate(self):
         (self.p/'price_audit.json').write_text(json.dumps({'latest_market_date':'2026-10-01','expected_tickers':1}))
-        with self.assertRaisesRegex(ValueError,'INCOMPLETE'):self.go()
+        x=self.go()
+        self.assertEqual(x['status'],'INCOMPLETE — CURRENT-DATE PRICE FEED UNAVAILABLE')
+        self.assertEqual(x['failure']['code'],'FEED_SESSION_MISMATCH')
 
     def test_split_or_price_basis_mismatch(self):
         f=pd.read_csv(self.p/'prices_latest.csv');f['Current Price']/=2;f.to_csv(self.p/'prices_latest.csv',index=False)
