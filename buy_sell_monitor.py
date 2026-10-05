@@ -72,7 +72,7 @@ def proximity(distance):
 
 
 def levels(history, current, major=False):
-    """Separate short pivots (5–21) from 63/126/252-session major evidence.
+    """Separate short pivots (5â€“21) from 63/126/252-session major evidence.
 
     Candidate strength is independent touches plus confluence. Levels from
     moving averages remain identified as dynamic, not historical pivots.
@@ -137,9 +137,9 @@ def relative_strength(stock,benchmark,n):
 def fundamental_evidence(raw):
     """Transparent raw-data normalizers; absent fields remain absent.
 
-    Growth: -20%→0, 0%→50, +20%→100. Margin: 0%→0, 30%→100.
-    Cash flow yield: 0%→0, 8%→100. Net debt / EBITDA: 0→100, 4→0.
-    Revisions: -10%→0, 0%→50, +10%→100. All ratios use decimal units.
+    Growth: -20%â†’0, 0%â†’50, +20%â†’100. Margin: 0%â†’0, 30%â†’100.
+    Cash flow yield: 0%â†’0, 8%â†’100. Net debt / EBITDA: 0â†’100, 4â†’0.
+    Revisions: -10%â†’0, 0%â†’50, +10%â†’100. All ratios use decimal units.
     """
     def number(name):return float(raw[name]) if finite(raw.get(name)) else NAN
     growth=[clip(50+number(k)*250) for k in ['Revenue Growth','EPS Growth']]
@@ -161,6 +161,7 @@ def calculate(history,price,session,benchmark=None,sector=None,context=None,posi
     g=history[history.Date<=pd.Timestamp(session)].sort_values('Date').copy()
     c=g.Close; current=float(price); out={}
     for label,n in [('1W %',5),('2W %',10),('1M %',20),('3M %',63),('6M %',126)]: out[label]=ret(c,n)
+    out['MomentumRaw']=float(np.nanmean([out['1M %'],out['3M %']]))
     previous_year=g[g.Date.dt.year<pd.Timestamp(session).year]
     out['YTD %']=100*(current/previous_year.Close.iloc[-1]-1) if len(previous_year) else NAN
     out['Primary Win%'],out['price_suggest_80']=range_position(g[g.Date>='2020-03-01'].Close,current)
@@ -222,7 +223,7 @@ def calculate(history,price,session,benchmark=None,sector=None,context=None,posi
     out['Breakdown Status']='Support Breakdown' if breakdown else 'None'
     out['Breakout Level']=float(prior_high);out['Breakdown Level']=float(prior_low)
     out['Reversal Status']='Reversal Developing' if higher_low and out['Momentum Status']=='Improving' and current>out['20D MA'] and flow20>5 else 'Unconfirmed'
-    out['Drawdown From High %']=100*(current/g.High.tail(252).max()-1)
+    out['Drawdown From High %']=100*(current/g.loc[g.Date>=pd.Timestamp(session)-pd.Timedelta(days=365),'High'].max()-1)
     out['Rebound From Recent Low %']=100*(current/g.Low.tail(63).min()-1)
     indexed=g.set_index('Date').Close
     for label,b in [('Market',benchmark),('Sector',sector)]:
@@ -243,13 +244,13 @@ def calculate(history,price,session,benchmark=None,sector=None,context=None,posi
                                    100 if ret(b,20)>0 else 0,sector_state])
     out.update({k:context.get(k,NAN) for k in ['Market Cap','Revenue Growth','EPS Growth','Operating Margin','Free Cash Flow','Net Debt / EBITDA','EPS Revision 90D','Forward PE','Peer Forward PE']})
     out['Fundamental Input Coverage %']=context['Fundamental Input Coverage %']
-    out['Buy Zone']=f'{support:.2f}–{support*1.02:.2f}' if support_holds else 'Unconfirmed'
+    out['Buy Zone']=f'{support:.2f}â€“{support*1.02:.2f}' if support_holds else 'Unconfirmed'
     stop=support-av.iloc[-1] if support_holds and finite(av.iloc[-1]) else NAN
     out['Invalidation']=float(stop);out['Downside %']=100*(current-stop)/current if finite(stop) and stop>0 else NAN
     out['Upside %']=out['Distance to Resistance %']
     rr=out['Upside %']/out['Downside %'] if finite(out['Downside %']) and out['Downside %']>0 else NAN
     out['Risk/Reward']=rr
-    out['Trim Zone']=f'{resistance*.98:.2f}–{resistance:.2f}' if finite(resistance) else 'Unavailable'
+    out['Trim Zone']=f'{resistance*.98:.2f}â€“{resistance:.2f}' if finite(resistance) else 'Unavailable'
     trend=[100 if current>out['50D MA'] else 0 if finite(out['50D MA']) else NAN,
            100 if out['50D MA Slope %']>0 else 0 if finite(out['50D MA Slope %']) else NAN,
            100 if out['MACD Histogram']>0 else 0, rotation if all(finite(x) for x in relative) else NAN]
@@ -322,7 +323,7 @@ def run(feed,universe,session,context_path=None,positions_path=None,benchmarks_p
     expected=pd.read_csv(universe).Symbol.astype(str).str.upper().tolist()
     if len(set(expected))!=len(expected): raise ValueError('Duplicate universe symbols')
     if lat.Symbol.duplicated().any() or history.duplicated(['Symbol','Date']).any(): raise ValueError('Duplicate source rows')
-    if audit['latest_market_date']!=session: raise ValueError('INCOMPLETE — CURRENT-DATE PRICE FEED UNAVAILABLE')
+    if audit['latest_market_date']!=session: raise ValueError('INCOMPLETE â€” CURRENT-DATE PRICE FEED UNAVAILABLE')
     if not historical and session!=latest_session(): raise ValueError('Stale current-session request')
     if set(lat.Symbol)!=set(expected): raise ValueError('Feed/universe reconciliation failed')
     if audit['expected_tickers']!=len(expected): raise ValueError('Audit/universe count mismatch')
@@ -335,7 +336,7 @@ def run(feed,universe,session,context_path=None,positions_path=None,benchmarks_p
         if not {'Source','As Of','Raw Evidence'}.issubset(context.columns): raise ValueError('Context requires source, as-of date and raw evidence')
         if (pd.to_datetime(context['As Of'])>pd.Timestamp(session)).any(): raise ValueError('Future context is prohibited')
         for col in ['Environment Score','Institutional/Insider Score']:
-            if col in context and ((context[col].dropna()<0)|(context[col].dropna()>100)).any():raise ValueError('Context evidence ratings must be 0–100')
+            if col in context and ((context[col].dropna()<0)|(context[col].dropna()>100)).any():raise ValueError('Context evidence ratings must be 0â€“100')
         if (pd.Timestamp(session)-pd.to_datetime(context['As Of'])).dt.days.gt(120).any():raise ValueError('Stale context exceeds 120 days')
     if not positions.empty:
         if positions.index.duplicated().any(): raise ValueError('Duplicate ownership symbols; aggregate transactions explicitly')
@@ -391,7 +392,7 @@ def run(feed,universe,session,context_path=None,positions_path=None,benchmarks_p
            'Breakouts':usable[usable['Breakout Status'].ne('None')],'Breakdowns':usable[usable['Breakdown Status'].ne('None')],
            'Owned Positions':usable[usable['Owned/Watch'].eq('Owned')],'Added Names':usable[usable.Universe.eq('Added')]}
     def clean(frame):return json.loads(frame.to_json(orient='records'))
-    return {'session':session,'historical':historical,'status':'INCOMPLETE — NO USABLE PRICES' if not ok.any() else 'HISTORICAL REBUILD' if historical else 'CURRENT — DATA LIMITED' if (~ok).any() else 'CURRENT',
+    return {'session':session,'historical':historical,'status':'INCOMPLETE â€” NO USABLE PRICES' if not ok.any() else 'HISTORICAL REBUILD' if historical else 'CURRENT â€” DATA LIMITED' if (~ok).any() else 'CURRENT',
             'source_sha256':{f:hashlib.sha256((feed/f).read_bytes()).hexdigest() for f in ['price_audit.json','prices_latest.csv','price_history.csv.gz']},
             'counts':{'Expected':len(expected),'Usable':int(ok.sum()),'Data Limited':int((~ok).sum()),'Triggered':len(views['Scanner'])},
             'views':{k:clean(v.sort_values(['Overall Rank','Ticker'],na_position='last') if 'Overall Rank' in v else v) for k,v in views.items()},
