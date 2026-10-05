@@ -339,7 +339,7 @@ def latest_session(now=None):
     return session.strftime('%Y-%m-%d')
 
 
-def structured_failure(feed, universe_count, session, code, detail, audit=None):
+def structured_failure(feed, universe_count, session, code, detail, audit=None, historical=False):
     feed=Path(feed)
     hashes={}
     for name in ['price_audit.json','prices_latest.csv','price_history.csv.gz']:
@@ -348,7 +348,7 @@ def structured_failure(feed, universe_count, session, code, detail, audit=None):
             hashes[name]=hashlib.sha256(path.read_bytes()).hexdigest()
     empty={k:[] for k in ['Master','Scanner','Top Opportunities','At-Approach Support','At-Approach Resistance',
                           'Breakouts','Breakdowns','Owned Positions','Added Names']}
-    return {'session':session,'historical':False,'status':'INCOMPLETE — CURRENT-DATE PRICE FEED UNAVAILABLE',
+    return {'session':session,'historical':historical,'status':'INCOMPLETE — CURRENT-DATE PRICE FEED UNAVAILABLE',
             'failure':{'code':code,'detail':detail,'requested_session':session,
                        'feed_session':(audit or {}).get('latest_market_date')},
             'source_sha256':hashes,
@@ -364,9 +364,9 @@ def run(feed,universe,session,context_path=None,positions_path=None,benchmarks_p
     if len(set(expected))!=len(expected): raise ValueError('Duplicate universe symbols')
     if lat.Symbol.duplicated().any() or history.duplicated(['Symbol','Date']).any(): raise ValueError('Duplicate source rows')
     if audit['latest_market_date']!=session:
-        return structured_failure(feed,len(expected),session,'FEED_SESSION_MISMATCH',f"feed session {audit.get('latest_market_date')} does not match requested {session}",audit)
+        return structured_failure(feed,len(expected),session,'FEED_SESSION_MISMATCH',f"feed session {audit.get('latest_market_date')} does not match requested {session}",audit,historical)
     if not historical and session!=latest_session():
-        return structured_failure(feed,len(expected),session,'REQUEST_SESSION_NOT_LATEST',f"requested {session}; latest completed session is {latest_session()}",audit)
+        return structured_failure(feed,len(expected),session,'REQUEST_SESSION_NOT_LATEST',f"requested {session}; latest completed session is {latest_session()}",audit,historical)
     if set(lat.Symbol)!=set(expected): raise ValueError('Feed/universe reconciliation failed')
     if audit['expected_tickers']!=len(expected): raise ValueError('Audit/universe count mismatch')
     if set(history.Symbol)-set(expected):raise ValueError('Unexpected history symbols')
