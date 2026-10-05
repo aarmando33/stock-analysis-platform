@@ -33,6 +33,6 @@ foreach ($item in @(@('context',$Context),@('positions',$Positions),@('benchmark
 if ($LASTEXITCODE -ne 0) { throw 'Monitor validation/calculation failed; workbook not exported' }
 $reportData = Get-Content -Raw $dataPath | ConvertFrom-Json
 $reportPath = Join-Path $OutputDirectory ("Stock_Buy_Sell_Monitor_"+$reportData.session+$(if ($Historical) {'_REVISED_HISTORICAL'} else {'_REVISED'})+'.xlsx')
-& $nodeExe (Join-Path $PSScriptRoot 'export_monitor.mjs') $dataPath $reportPath
+& $pythonExe (Join-Path $PSScriptRoot 'export_monitor.py') $dataPath $reportPath
 if ($LASTEXITCODE -ne 0) { throw 'Workbook export failed' }
 Write-Output $reportPath
