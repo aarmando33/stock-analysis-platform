@@ -189,6 +189,7 @@ class Pipeline(unittest.TestCase):
     def test_padded_history_and_four_decimal_feed_rounding(self):
         g=pd.read_csv(self.p/'price_history.csv.gz')
         blank=g.iloc[[0]].copy();blank[['Open','High','Low','Close','Volume']]=np.nan
+        blank['Date']=(pd.to_datetime(g['Date']).min()-pd.offsets.BDay(1)).strftime('%Y-%m-%d')
         g=pd.concat([blank,g],ignore_index=True)
         g.to_csv(self.p/'price_history.csv.gz',index=False,compression='gzip')
         f=pd.read_csv(self.p/'prices_latest.csv')
