@@ -1,0 +1,18 @@
+name: Monitor calculation tests
+on:
+  pull_request:
+    paths: ['buy_sell_monitor.py', 'tests/**', 'requirements-monitor.txt', '.github/workflows/monitor-tests.yml']
+  push:
+    paths: ['buy_sell_monitor.py', 'tests/**', 'requirements-monitor.txt', '.github/workflows/monitor-tests.yml']
+permissions:
+  contents: read
+jobs:
+  calculations:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements-monitor.txt
+      - run: python -m unittest discover -s tests -v
