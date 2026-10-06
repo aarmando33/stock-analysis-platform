@@ -1,6 +1,6 @@
 """Versioned Python workbook exporter for Stock Buy/Sell Monitor v2.
 
-Uses the artifact_tool available in the scheduled ChatGPT/Codex runtime.
+Uses a portable local XLSX writer; no background service or socket is required.
 All calculations arrive precomputed from buy_sell_monitor.py; this module is presentation-only.
 """
 from __future__ import annotations
@@ -9,7 +9,9 @@ import argparse
 import json
 from pathlib import Path
 
-from artifact_tool import Workbook, SpreadsheetFile
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.utils import get_column_letter
 
 VISIBLE = [
     'Overall Rank','Ticker','Owned/Watch','Price','Price Date','Buy Zone',
@@ -34,44 +36,45 @@ def col_letter(n: int) -> str:
 
 
 def sheet(wb, name, rows, headers=None):
-    sh=wb.worksheets.add(name)
-    headers=headers or list(dict.fromkeys(k for r in rows for k in r.keys()))
-    if not headers:
-        headers=['Status']
-    body=[[r.get(h) for h in headers] for r in rows] if rows else [[('No qualifying records' if i==0 else None) for i in range(len(headers))]]
-    end=col_letter(len(headers))
-    sh.get_range(f'A1:{end}1').values=[headers]
-    sh.get_range(f'A2:{end}{len(body)+1}').values=body
-    sh.get_range(f'A1:{end}1').format={
-        'fill':'#193F60','font':{'bold':True,'color':'#FFFFFF'},
-        'row_height':52,'wrap_text':True,'horizontal_alignment':'center','vertical_alignment':'center'
-    }
-    whole=sh.get_range(f'A1:{end}{len(body)+1}')
-    whole.format.wrap_text=True
-    whole.format.row_height=110 if name=='Methodology' else 60
-    whole.format.column_width=18
-    sh.freeze_panes.freeze_rows(1)
-    sh.freeze_panes.freeze_columns(min(2,len(headers)))
-    for i,h in enumerate(headers,1):
-        col=col_letter(i)
-        data=sh.get_range(f'{col}2:{col}{len(body)+1}')
-        if '%' in h:
-            data.format.number_format='0.0"%"'
-        elif any(x in h for x in ['Score','Confidence','Points']) or h in ['Risk/Reward','Relative Volume']:
-            data.format.number_format='0.0'
-        elif h.endswith('Price') or h.endswith('Support') or h.endswith('Resistance') or h in ['ATR','Invalidation'] or h.startswith('MACD') or h.endswith('MA') or h.endswith('Basis') or h.endswith('Value') or h=='Unrealized $':
-            data.format.number_format='0.00'
-        elif 'Volume' in h and 'Ratio' not in h and 'Confirmation' not in h and '%' not in h:
-            data.format.number_format='#,##0'
-        if any(x in h for x in ['Reason','Source','Status','Action','Location','Basis','Evidence','Owned/Watch','Formula','Notes','Timeframe']):
-            sh.get_range(f'{col}:{col}').format.column_width=36
+    sh = wb.create_sheet(name)
+    headers = headers or list(dict.fromkeys(k for r in rows for k in r)) or ['Status']
+    body = [[r.get(h) for h in headers] for r in rows] if rows else [['No qualifying records'] + [None]*(len(headers)-1)]
+    for values in [headers, *body]:
+        sh.append(values)
+    sh.sheet_view.showGridLines = False
+    sh.freeze_panes = 'C2' if len(headers) >= 2 else 'B2'
+    sh.auto_filter.ref = sh.dimensions
+    for row in sh:
+        for cell in row:
+            cell.alignment = Alignment(wrap_text=True, vertical='center')
+            cell.font = Font(size=11)
+            # Source text must stay literal, never execute as an Excel formula.
+            if isinstance(cell.value, str):
+                cell.data_type = 's'
+        sh.row_dimensions[row[0].row].height = 110 if name == 'Methodology' else 60
+    for cell in sh[1]:
+        cell.fill = PatternFill('solid', fgColor='193F60')
+        cell.font = Font(size=11, bold=True, color='FFFFFF')
+    sh.row_dimensions[1].height = 52
+    for i, h in enumerate(headers, 1):
+        width = 36 if any(x in h for x in ['Reason','Source','Status','Action','Location','Basis','Evidence','Owned/Watch','Formula','Notes','Timeframe']) else 18
+        sh.column_dimensions[get_column_letter(i)].width = width
+        fmt = 'General'
+        if '%' in h: fmt = '0.0"%"'
+        elif any(x in h for x in ['Score','Confidence','Points']) or h in ['Risk/Reward','Relative Volume']: fmt = '0.0'
+        elif h.endswith(('Price','Support','Resistance','MA','Basis','Value')) or h in ['Price','ATR','Invalidation','Unrealized $'] or h.startswith('MACD'): fmt = '0.00'
+        elif 'Volume' in h and 'Ratio' not in h and 'Confirmation' not in h: fmt = '#,##0'
+        for cells in sh.iter_rows(min_row=2, min_col=i, max_col=i):
+            cells[0].number_format = fmt
     return sh
 
 
 def build(report):
-    wb=Workbook.create()
+    wb=Workbook()
+    wb.remove(wb.active)
     failure=report.get('failure') or {}
     summary=[
+        {'Metric':'Research coverage','Value':report.get('research_status','Unavailable'),'Notes':'Missing fundamental/sector/benchmark evidence cannot support buy decisions'},
         {'Metric':'Report status','Value':report.get('status'),'Notes':'Historical rebuild; not current trading guidance' if report.get('historical') else 'Latest completed session'},
         {'Metric':'Market session','Value':report.get('session'),'Notes':'All technical history is cut off at this session'},
     ]
@@ -101,7 +104,7 @@ def build(report):
     sheet(wb,'Calculations',calculations)
 
     audit_cols=[
-        'Ticker','Universe','price_status','Price Date','Price Provider','Price Basis',
+        'Ticker','Universe','price_status','Price Date','Price Provider','Provider Symbol','Price Basis',
         'Context Source','Context As Of','Ownership Source',
         'Short Support','Short Support Source','Short Support Date','Short Support Strength','Short Support Tests','Support Timeframe','Support Defended',
         'Major Support','Major Support Source','Major Support Date','Major Support Strength','Major Support Tests',
@@ -110,9 +113,11 @@ def build(report):
     ]
     audit_rows=[{k:r.get(k) for k in audit_cols} for r in calculations]
     audit=sheet(wb,'Audit-Provenance',audit_rows,audit_cols)
-    hashes=[['Input file','SHA256'],*[[k,v] for k,v in report.get('source_sha256',{}).items()]]
+    hashes=[['Input/code file','SHA256'],*[[k,v] for group in ['source_sha256','input_sha256','code_sha256'] for k,v in report.get(group,{}).items()]]
     start=max(5,len(audit_rows)+5)
-    audit.get_range(f'A{start}:B{start+len(hashes)-1}').values=hashes
+    for row_index, values in enumerate(hashes, start):
+        for col_index, value in enumerate(values, 1):
+            audit.cell(row_index, col_index, value)
 
     methodology=[
         {'Metric':'Primary Win%','Formula':'(maximum adjusted close - current)/(maximum - minimum) x 100','Window':'Closing range from 2020-03-01 or first available session'},
@@ -144,9 +149,8 @@ def main():
     a=p.parse_args()
     report=json.loads(Path(a.input).read_text(encoding='utf-8'))
     wb=build(report)
-    error_scan=wb.inspect({'kind':'match','search_term':'#REF!|#DIV/0!|#VALUE!|#NUM!|#NAME\\?','options':{'use_regex':True,'max_results':50},'summary':'formula error scan'})
-    print(error_scan.ndjson)
-    SpreadsheetFile.export_xlsx(wb).save(a.output)
+    Path(a.output).parent.mkdir(parents=True, exist_ok=True)
+    wb.save(a.output)
     print(a.output)
 
 

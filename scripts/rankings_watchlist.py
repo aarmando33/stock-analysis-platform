@@ -2,6 +2,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional, Dict, Any
 import os
+import re
 
 import pandas as pd
 import numpy as np
@@ -253,6 +254,8 @@ def generate_rankings_watchlists(
             raise KeyError(f"dfagg missing 'Symbol' column. "
                            f"Columns={list(out_df.columns)}, index_name={getattr(out_df.index, 'name', None)}")
     _normalize_symbol(out_df, "Symbol")
+    if 'price_status' in out_df:
+        out_df=out_df[out_df.price_status.eq('OK')].copy()
 
     # Optional: compute config-driven score
     cfg = _load_scoring_config(scoring_config_path)
@@ -333,7 +336,9 @@ def generate_rankings_watchlists(
     # Prior snapshot → prev_df
     prev_df = None
     if write_files and OUTPUT_DIR.exists():
-        prior_files = sorted([p for p in OUTPUT_DIR.glob(f"rankings_{base}_*.csv") if run_date not in p.name])
+        pattern=re.compile(r'rankings_'+re.escape(base)+r'_(\d{4}-\d{2}-\d{2})\.csv')
+        prior_files = sorted([p for p in OUTPUT_DIR.glob(f"rankings_{base}_*.csv")
+                              if (match:=pattern.fullmatch(p.name)) and match.group(1)<run_date])
         if prior_files:
             prev_df = _load_prior_snapshot(prior_files[-1])
 

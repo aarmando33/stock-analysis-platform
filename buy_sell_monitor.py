@@ -16,6 +16,7 @@ import pandas as pd
 WEIGHTS = {'Location':20, 'Support/RR':25, 'Trend/RS':20,
            'Fundamentals':20, 'Flow':10, 'Environment':5}
 NAN = float('nan')
+ADDED_SYMBOLS = {'LRCX','AMAT','ETN','PWR','CIEN','ADI','ZS','MCHP'}
 
 
 def finite(v):
@@ -72,7 +73,7 @@ def proximity(distance):
 
 
 def levels(history, current, major=False):
-    """Separate short pivots (5â€“21) from 63/126/252-session major evidence.
+    """Separate short pivots (5–21) from 63/126/252-session major evidence.
 
     Candidate strength is independent touches plus confluence. Levels from
     moving averages remain identified as dynamic, not historical pivots.
@@ -137,9 +138,9 @@ def relative_strength(stock,benchmark,n):
 def fundamental_evidence(raw):
     """Transparent raw-data normalizers; absent fields remain absent.
 
-    Growth: -20%â†’0, 0%â†’50, +20%â†’100. Margin: 0%â†’0, 30%â†’100.
-    Cash flow yield: 0%â†’0, 8%â†’100. Net debt / EBITDA: 0â†’100, 4â†’0.
-    Revisions: -10%â†’0, 0%â†’50, +10%â†’100. All ratios use decimal units.
+    Growth: -20%→0, 0%→50, +20%→100. Margin: 0%→0, 30%→100.
+    Cash flow yield: 0%→0, 8%→100. Net debt / EBITDA: 0→100, 4→0.
+    Revisions: -10%→0, 0%→50, +10%→100. All ratios use decimal units.
     """
     def number(name):return float(raw[name]) if finite(raw.get(name)) else NAN
     growth=[clip(50+number(k)*250) for k in ['Revenue Growth','EPS Growth']]
@@ -158,6 +159,9 @@ def fundamental_evidence(raw):
 
 
 def calculate(history,price,session,benchmark=None,sector=None,context=None,position=None):
+    # Protect direct callers as well as the file pipeline against future leakage.
+    benchmark=benchmark.loc[benchmark.index<=pd.Timestamp(session)] if benchmark is not None else None
+    sector=sector.loc[sector.index<=pd.Timestamp(session)] if sector is not None else None
     g=history[history.Date<=pd.Timestamp(session)].sort_values('Date').copy()
     c=g.Close; current=float(price); out={}
     for label,n in [('1W %',5),('2W %',10),('1M %',20),('3M %',63),('6M %',126)]:
@@ -177,7 +181,7 @@ def calculate(history,price,session,benchmark=None,sector=None,context=None,posi
                 'MACD Signal':float(signal.iloc[-1]),'MACD Histogram':float(hist.iloc[-1]),
                 'ATR':float(av.iloc[-1]),'ATR %':float(100*av.iloc[-1]/current)})
     out['Momentum Status']='Improving' if len(hist)>5 and hist.iloc[-1]>hist.iloc[-6] else 'Deteriorating'
-    v=g.Volume; volume_ok=len(v)>=21 and v.tail(21).notna().all() and (v.tail(21)>=0).all()
+    v=g.Volume; volume_ok=len(v)>=21 and np.isfinite(v.tail(21)).all() and (v.tail(21)>=0).all() and v.iloc[-21:-1].sum()>0
     mean20=float(v.iloc[-21:-1].mean()) if volume_ok else NAN
     out['Recent Volume']=float(v.iloc[-1]) if volume_ok else NAN
     out['Average Volume 20D']=mean20
@@ -187,8 +191,8 @@ def calculate(history,price,session,benchmark=None,sector=None,context=None,posi
     out['Up-Day Volume 20D']=up;out['Down-Day Volume 20D']=down
     out['Up/Down Volume Ratio']=up/down if finite(down) and down>0 else NAN
     out['Volume Contraction Ratio']=float(v.tail(5).mean()/v.iloc[-25:-5].mean()) if volume_ok and len(v)>=25 and v.iloc[-25:-5].mean()>0 else NAN
-    signed=np.sign(d).fillna(0)*v
-    obv=signed.cumsum();out['OBV']=float(obv.iloc[-1]) if volume_ok else NAN
+    signed=np.sign(d).fillna(0)*v.where(np.isfinite(v)&v.ge(0))
+    obv=signed.cumsum();out['OBV']=float(obv.iloc[-1]) if volume_ok and np.isfinite(v).all() and v.ge(0).all() else NAN
     # Scale signed volume by positive volume, not by arbitrary OBV origin.
     flow20=100*signed.tail(20).sum()/v.tail(20).sum() if volume_ok and v.tail(20).sum()>0 else NAN
     out['20D Net Volume %']=float(flow20);out['20D Net Volume Basis']='20-session net signed volume / total volume'
@@ -252,13 +256,14 @@ def calculate(history,price,session,benchmark=None,sector=None,context=None,posi
                                    100 if ret(b,20)>0 else 0,sector_state])
     out.update({k:context.get(k,NAN) for k in ['Market Cap','Revenue Growth','EPS Growth','Operating Margin','Free Cash Flow','Net Debt / EBITDA','EPS Revision 90D','Forward PE','Peer Forward PE']})
     out['Fundamental Input Coverage %']=context['Fundamental Input Coverage %']
-    out['Buy Zone']=f'{support:.2f}â€“{support*1.02:.2f}' if support_holds else 'Unconfirmed'
+    out['Buy Zone']=f'{support:.2f}–{support*1.02:.2f}' if support_holds else 'Unconfirmed'
     stop=support-av.iloc[-1] if support_holds and finite(av.iloc[-1]) else NAN
+    if not finite(stop) or stop<=0: stop=NAN
     out['Invalidation']=float(stop);out['Downside %']=100*(current-stop)/current if finite(stop) and stop>0 else NAN
     out['Upside %']=out['Distance to Resistance %']
     rr=out['Upside %']/out['Downside %'] if finite(out['Downside %']) and out['Downside %']>0 else NAN
     out['Risk/Reward']=rr
-    out['Trim Zone']=f'{resistance*.98:.2f}â€“{resistance:.2f}' if finite(resistance) else 'Unavailable'
+    out['Trim Zone']=f'{resistance*.98:.2f}–{resistance:.2f}' if finite(resistance) else 'Unavailable'
     trend=[100 if current>out['50D MA'] else 0 if finite(out['50D MA']) else NAN,
            100 if out['50D MA Slope %']>0 else 0 if finite(out['50D MA Slope %']) else NAN,
            100 if out['MACD Histogram']>0 else 0, rotation if all(finite(x) for x in relative) else NAN]
@@ -339,6 +344,17 @@ def latest_session(now=None):
     return session.strftime('%Y-%m-%d')
 
 
+def history_gap(raw, valid, symbol, session):
+    """Bulk mixed-asset downloads contain equity padding on crypto-only days."""
+    start=valid.Date.min()
+    if symbol.endswith('-USD'):
+        dates=pd.date_range(start,pd.Timestamp(session),freq='D')
+    else:
+        import exchange_calendars as xc
+        dates=xc.get_calendar('XNYS').sessions_in_range(start,pd.Timestamp(session))
+    return raw[raw.Date.isin(dates)].Close.isna().any()
+
+
 def structured_failure(feed, universe_count, session, code, detail, audit=None, historical=False):
     feed=Path(feed)
     hashes={}
@@ -350,25 +366,46 @@ def structured_failure(feed, universe_count, session, code, detail, audit=None, 
                           'Breakouts','Breakdowns','Owned Positions','Added Names']}
     return {'session':session,'historical':historical,'status':'INCOMPLETE — CURRENT-DATE PRICE FEED UNAVAILABLE',
             'failure':{'code':code,'detail':detail,'requested_session':session,
-                       'feed_session':(audit or {}).get('latest_market_date')},
+                       'feed_session':(audit or {}).get('latest_market_date'),
+                       'artifact_generated_at':(audit or {}).get('generated_at_utc'),
+                       'artifact_ok':(audit or {}).get('ok'),
+                       'failed_symbols':', '.join((audit or {}).get('failed_symbols',[]))},
             'source_sha256':hashes,
             'counts':{'Expected':universe_count,'Usable':0,'Data Limited':universe_count,'Triggered':0},
             'views':empty,'calculations':[],'context':[],'positions':[]}
 
 
 def run(feed,universe,session,context_path=None,positions_path=None,benchmarks_path=None,historical=False):
-    feed=Path(feed);lat=pd.read_csv(feed/'prices_latest.csv')
-    history=pd.read_csv(feed/'price_history.csv.gz',parse_dates=['Date'])
-    audit=json.loads((feed/'price_audit.json').read_text())
-    expected=pd.read_csv(universe).Symbol.astype(str).str.upper().tolist()
+    feed=Path(feed)
+    expected=pd.read_csv(universe).Symbol.fillna('').astype(str).str.strip().str.upper().tolist()
+    if not expected or any(not x for x in expected): raise ValueError('Empty universe symbols')
     if len(set(expected))!=len(expected): raise ValueError('Duplicate universe symbols')
-    if lat.Symbol.duplicated().any() or history.duplicated(['Symbol','Date']).any(): raise ValueError('Duplicate source rows')
-    if audit['latest_market_date']!=session:
+    try:
+        audit=json.loads((feed/'price_audit.json').read_text(encoding='utf-8'))
+        if not isinstance(audit,dict): raise ValueError('Audit must be an object')
+    except (OSError,ValueError) as exc:
+        return structured_failure(feed,len(expected),session,'INVALID_OR_MISSING_AUDIT',str(exc),historical=historical)
+    if audit.get('latest_market_date')!=session:
         return structured_failure(feed,len(expected),session,'FEED_SESSION_MISMATCH',f"feed session {audit.get('latest_market_date')} does not match requested {session}",audit,historical)
     if not historical and session!=latest_session():
         return structured_failure(feed,len(expected),session,'REQUEST_SESSION_NOT_LATEST',f"requested {session}; latest completed session is {latest_session()}",audit,historical)
+    try:
+        lat=pd.read_csv(feed/'prices_latest.csv')
+        history=pd.read_csv(feed/'price_history.csv.gz',parse_dates=['Date'])
+    except (OSError,ValueError) as exc:
+        return structured_failure(feed,len(expected),session,'INVALID_OR_MISSING_PRICE_FILES',str(exc),audit,historical)
+    if not {'Symbol','Current Price','Price Date','Provider','Price Basis','price_status'}.issubset(lat.columns):
+        raise ValueError('Latest-price schema invalid')
+    if not {'Symbol','Date','Open','High','Low','Close','Volume'}.issubset(history.columns):
+        raise ValueError('History schema invalid')
+    for frame in [lat,history]:
+        frame['Symbol']=frame.Symbol.fillna('').astype(str).str.strip().str.upper()
+    for column in ['Open','High','Low','Close','Volume']:
+        history[column]=pd.to_numeric(history[column],errors='coerce')
+    lat['Current Price']=pd.to_numeric(lat['Current Price'],errors='coerce')
+    if lat.Symbol.duplicated().any() or history.duplicated(['Symbol','Date']).any(): raise ValueError('Duplicate source rows')
     if set(lat.Symbol)!=set(expected): raise ValueError('Feed/universe reconciliation failed')
-    if audit['expected_tickers']!=len(expected): raise ValueError('Audit/universe count mismatch')
+    if audit.get('expected_tickers')!=len(expected): raise ValueError('Audit/universe count mismatch')
     if set(history.Symbol)-set(expected):raise ValueError('Unexpected history symbols')
     context=pd.read_csv(context_path).set_index('Ticker') if context_path else pd.DataFrame()
     positions=pd.read_csv(positions_path).set_index('Ticker') if positions_path else pd.DataFrame()
@@ -376,13 +413,17 @@ def run(feed,universe,session,context_path=None,positions_path=None,benchmarks_p
     if not context.empty:
         if context.index.duplicated().any(): raise ValueError('Duplicate context symbols')
         if not {'Source','As Of','Raw Evidence'}.issubset(context.columns): raise ValueError('Context requires source, as-of date and raw evidence')
+        for column in ['Source','As Of','Raw Evidence']:
+            if context[column].isna().any() or context[column].astype(str).str.strip().eq('').any(): raise ValueError('Context provenance cannot be blank')
         if (pd.to_datetime(context['As Of'])>pd.Timestamp(session)).any(): raise ValueError('Future context is prohibited')
         for col in ['Environment Score','Institutional/Insider Score']:
-            if col in context and ((context[col].dropna()<0)|(context[col].dropna()>100)).any():raise ValueError('Context evidence ratings must be 0â€“100')
+            if col in context and ((context[col].dropna()<0)|(context[col].dropna()>100)).any():raise ValueError('Context evidence ratings must be 0–100')
         if (pd.Timestamp(session)-pd.to_datetime(context['As Of'])).dt.days.gt(120).any():raise ValueError('Stale context exceeds 120 days')
     if not positions.empty:
         if positions.index.duplicated().any(): raise ValueError('Duplicate ownership symbols; aggregate transactions explicitly')
         if not {'Source','As Of','Confirmed','Qty','Cost Basis'}.issubset(positions.columns): raise ValueError('Ownership provenance required')
+        for column in ['Source','As Of']:
+            if positions[column].isna().any() or positions[column].astype(str).str.strip().eq('').any(): raise ValueError('Ownership provenance cannot be blank')
         if (pd.to_datetime(positions['As Of'])>pd.Timestamp(session)).any(): raise ValueError('Future ownership prohibited')
     if not benchmarks.empty:
         required_benchmark={'Date','Symbol','Close','Source','Price Basis'}
@@ -396,21 +437,30 @@ def run(feed,universe,session,context_path=None,positions_path=None,benchmarks_p
         if not benchmarks.reset_index(drop=True)[['Symbol','Date']].equals(ordered[['Symbol','Date']]): raise ValueError('Benchmarks must be ordered by Symbol, Date')
     rows=[]
     for sym in expected:
-        lr=lat[lat.Symbol==sym].iloc[0];g=history[history.Symbol==sym].dropna(subset=['Close']).sort_values('Date')
+        lr=lat[lat.Symbol==sym].iloc[0]
+        raw_history=history[history.Symbol==sym].sort_values('Date')
+        g=raw_history.dropna(subset=['Close'])
         row={'Ticker':sym,'Price':lr['Current Price'],'Price Date':lr['Price Date'],
              'Price Provider':lr['Provider'],'Price Basis':lr['Price Basis'],'price_status':lr['price_status'],
-             'Universe':'Added' if sym in ['LRCX','AMAT','ETN','PWR','CIEN','ADI','ZS','MCHP'] else 'Core'}
+             'Provider Symbol':lr.get('Provider Symbol',sym),
+             'Universe':'Added' if sym in ADDED_SYMBOLS else 'Core'}
+        pos=positions.loc[sym].to_dict() if sym in positions.index and str(positions.loc[sym,'Confirmed']).lower()=='true' else None
+        if pos and (not finite(pos['Qty']) or float(pos['Qty'])<=0 or not finite(pos['Cost Basis']) or float(pos['Cost Basis'])<=0): raise ValueError('Invalid confirmed ownership')
         if row['price_status']=='OK':
             required=['Close','Open','High','Low']
-            if g.empty or g.Date.max()!=pd.Timestamp(session) or str(row['Price Date'])!=session:
+            if not historical and sym.endswith('-USD') and pd.Timestamp.now(tz='UTC')<pd.Timestamp(session,tz='UTC')+pd.Timedelta(days=1):
+                row['price_status']='UNCOMPLETED_CRYPTO_CANDLE'
+            elif g.empty or g.Date.max()!=pd.Timestamp(session) or str(row['Price Date'])!=session:
                 row['price_status']='STALE_OR_MISSING_HISTORY'
-            elif not finite(row['Price']) or row['Price']<=0 or g[required].isna().any().any() or (g[required]<=0).any().any():
+            elif history_gap(raw_history,g,sym,session):
+                row['price_status']='INCOMPLETE_HISTORY'
+            elif not finite(row['Price']) or row['Price']<=0 or g.Date.isna().any() or not np.isfinite(g[required].to_numpy()).all() or (g[required]<=0).any().any():
                 row['price_status']='INVALID_HISTORY'
             elif not str(row['Price Basis']).lower().startswith('adjusted'):
                 row['price_status']='UNVERIFIED_PRICE_BASIS'
             else:
                 tol=1e-10*g[['High','Low','Close']].abs().max(axis=1).clip(lower=1)
-                if ((g.High+tol<g.Low)|(g.High+tol<g.Close)|(g.Low-tol>g.Close)).any():
+                if ((g.High+tol<g.Low)|(g.High+tol<g.Close)|(g.Low-tol>g.Close)|(g.High+tol<g.Open)|(g.Low-tol>g.Open)).any():
                     row['price_status']='INVALID_HISTORY'
                 elif round(float(g.Close.iloc[-1]),4)!=round(float(row['Price']),4):
                     row['price_status']='PRICE_HISTORY_MISMATCH'
@@ -418,7 +468,6 @@ def run(feed,universe,session,context_path=None,positions_path=None,benchmarks_p
                     row['price_status']='INSUFFICIENT_HISTORY'
         if row['price_status']=='OK':
             ctx=context.loc[sym].to_dict() if sym in context.index else {}
-            pos=positions.loc[sym].to_dict() if sym in positions.index and str(positions.loc[sym,'Confirmed']).lower()=='true' else None
             if pos and (not finite(pos['Qty']) or pos['Qty']<=0 or not finite(pos['Cost Basis']) or pos['Cost Basis']<=0): raise ValueError('Invalid confirmed ownership')
             def bm(symbol):
                 if benchmarks.empty:return None
@@ -430,14 +479,18 @@ def run(feed,universe,session,context_path=None,positions_path=None,benchmarks_p
             row['Context Raw Evidence']=ctx.get('Raw Evidence','Unavailable')
             row['Ownership Source']=pos.get('Source') if pos else 'Unavailable'
         else:
-            row.update({'Overall Signal/Action':'Data Unavailable','Action Reason':row['price_status'],'Owned/Watch':'Ownership/Cost Basis Unavailable'})
+            row.update({'Overall Signal/Action':'Data Unavailable','Action Reason':row['price_status'],
+                        'Owned/Watch':'Owned' if pos else 'Ownership/Cost Basis Unavailable',
+                        'Qty':pos['Qty'] if pos else None,'Cost Basis':pos['Cost Basis'] if pos else None,
+                        'Ownership Source':pos['Source'] if pos else 'Unavailable'})
         rows.append(row)
     df=pd.DataFrame(rows)
     # Even an all-failed run must export its audit and empty action views.
     for name in ['Opportunity Score','Setup Confidence','Support Proximity','Resistance Proximity',
-                 'Breakout Status','Breakdown Status','Owned/Watch']:
+                 'Breakout Status','Breakdown Status','Owned/Watch','Reversal Status','Rotation Score','Money Flow','Market Cap','1W %','2W %','1M %']:
         if name not in df:df[name]=None
     ok=df.price_status.eq('OK')
+    df['Largest Recent Drop %']=df[['1W %','2W %','1M %']].apply(pd.to_numeric,errors='coerce').min(axis=1)
     df.loc[ok,'Overall Rank']=df.loc[ok,'Opportunity Score'].rank(method='min',ascending=False)
     usable=df[ok]
     near=['Strong Proximity','Near','Approaching']
@@ -446,12 +499,29 @@ def run(feed,universe,session,context_path=None,positions_path=None,benchmarks_p
            'At-Approach Support':usable[usable['Support Proximity'].isin(near)&usable['Breakdown Status'].eq('None')],
            'At-Approach Resistance':usable[usable['Resistance Proximity'].isin(near)&usable['Breakout Status'].eq('None')],
            'Breakouts':usable[usable['Breakout Status'].ne('None')],'Breakdowns':usable[usable['Breakdown Status'].ne('None')],
-           'Owned Positions':usable[usable['Owned/Watch'].eq('Owned')],'Added Names':usable[usable.Universe.eq('Added')]}
+           'Owned Positions':df[df['Owned/Watch'].eq('Owned')],'Added Names':df[df.Universe.eq('Added')]}
+    # Add required research views without dropping or redefining existing tabs.
+    views.update({
+        'Buy-Accumulate':usable[usable['Overall Signal/Action'].isin(['Strong Buy Zone','Buy/Accumulate'])],
+        'Drop-Reversal':usable[usable['Reversal Status'].eq('Reversal Developing') & pd.to_numeric(usable.get('Drawdown From High %',pd.Series(index=usable.index,dtype=float)),errors='coerce').le(-15)],
+        'Strongest Rotation':usable[pd.to_numeric(usable['Rotation Score'],errors='coerce').ge(5.5)].sort_values('Rotation Score',ascending=False),
+        'Strongest Money Flow':usable[usable['Money Flow'].isin(['Entering','Accumulating'])],
+        'Money Flow Warnings':usable[usable['Money Flow'].isin(['Leaving','Distributing'])],
+        'Largest Recent Drops':usable[usable['Largest Recent Drop %'].lt(0)].sort_values('Largest Recent Drop %').head(25),
+        'Large-Cap Opportunities':usable[pd.to_numeric(usable['Market Cap'],errors='coerce').ge(10_000_000_000)].sort_values(['Opportunity Score','Setup Confidence','Ticker'],ascending=[False,False,True]).head(25),
+    })
     def clean(frame):return json.loads(frame.to_json(orient='records'))
-    return {'session':session,'historical':historical,'status':'INCOMPLETE â€” NO USABLE PRICES' if not ok.any() else 'HISTORICAL REBUILD' if historical else 'CURRENT â€” DATA LIMITED' if (~ok).any() else 'CURRENT',
+    return {'session':session,'historical':historical,'status':'INCOMPLETE — NO USABLE PRICES' if not ok.any() else 'HISTORICAL REBUILD' if historical else 'CURRENT — DATA LIMITED' if (~ok).any() or context.empty or benchmarks.empty else 'CURRENT',
             'source_sha256':{f:hashlib.sha256((feed/f).read_bytes()).hexdigest() for f in ['price_audit.json','prices_latest.csv','price_history.csv.gz']},
-            'counts':{'Expected':len(expected),'Usable':int(ok.sum()),'Data Limited':int((~ok).sum()),'Triggered':len(views['Scanner'])},
-            'views':{k:clean(v.sort_values(['Overall Rank','Ticker'],na_position='last') if 'Overall Rank' in v else v) for k,v in views.items()},
+            'research_status':'PRICE-ONLY RESEARCH — CONTEXT/BENCHMARKS UNAVAILABLE' if context.empty or benchmarks.empty else 'SUPPLIED RESEARCH — COVERAGE VARIES BY TICKER',
+            'code_sha256':{f:hashlib.sha256((Path(__file__).parent/f).read_bytes()).hexdigest() for f in ['buy_sell_monitor.py','export_monitor.py']},
+            'input_sha256':{name:hashlib.sha256(Path(path).read_bytes()).hexdigest() for name,path in [('universe',universe),('context',context_path),('positions',positions_path),('benchmarks',benchmarks_path)] if path},
+            'counts':{'Expected':len(expected),'Usable':int(ok.sum()),'Data Limited':int((~ok).sum()),'Triggered':len(views['Scanner']),
+                      'Core Expected':len(set(expected)-ADDED_SYMBOLS),'Core Found':int((ok & df.Universe.eq('Core')).sum()),
+                      'Core Missing':int((~ok & df.Universe.eq('Core')).sum()),
+                      'Added Expected':len(set(expected)&ADDED_SYMBOLS),'Added Found':int((ok & df.Universe.eq('Added')).sum()),
+                      'Added Missing':int((~ok & df.Universe.eq('Added')).sum()),'Coverage %':round(100*ok.sum()/len(expected),2)},
+            'views':{k:clean(v if k in ['Largest Recent Drops','Strongest Rotation'] else v.sort_values(['Overall Rank','Ticker'],na_position='last') if 'Overall Rank' in v else v) for k,v in views.items()},
             'calculations':clean(df),'context':clean(context.reset_index()) if not context.empty else [],
             'positions':clean(positions.reset_index()) if not positions.empty else []}
 

@@ -19,8 +19,8 @@ if (!(Test-Path (Join-Path $localDeps 'exchange_calendars'))) {
 }
 $env:PYTHONPATH = $localDeps
 
-& $pythonExe -c "import artifact_tool" 2>$null
-if ($LASTEXITCODE -ne 0) { throw 'artifact_tool is required in the scheduled runtime for Excel export' }
+& $pythonExe -c "import openpyxl" 2>$null
+if ($LASTEXITCODE -ne 0) { throw 'Install requirements-monitor.txt for portable Excel export' }
 
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
 $dataPath = Join-Path $OutputDirectory 'monitor_results.json'

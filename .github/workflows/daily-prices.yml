@@ -7,9 +7,16 @@ on:
     paths:
       - "price_feed.py"
       - "tickers.csv"
+      - "buy_sell_monitor.py"
+      - "export_monitor.py"
+      - "requirements-feed.txt"
+      - "requirements-monitor.txt"
+      - "symbol_aliases.csv"
       - ".github/workflows/daily-prices.yml"
   schedule:
-    - cron: "15 21 * * 1-5"
+    # Both UTC schedules cover DST; a local-time gate selects one run.
+    - cron: "30 21 * * 1-5"
+    - cron: "30 22 * * 1-5"
 
 permissions:
   contents: read
@@ -24,16 +31,33 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - run: pip install pandas numpy scipy scikit-learn yfinance requests
+      - name: Select scheduled local time
+        id: schedule
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          SCHEDULE: ${{ github.event.schedule }}
+        run: |
+          offset=$(TZ=America/Chicago date +%z)
+          if [[ "$EVENT_NAME" != "schedule" || ( "$offset" == "-0500" && "$SCHEDULE" == "30 21 * * 1-5" ) || ( "$offset" == "-0600" && "$SCHEDULE" == "30 22 * * 1-5" ) ]]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+      - run: pip install -r requirements-feed.txt
+        if: steps.schedule.outputs.run == 'true'
       - name: Download and validate prices
+        if: steps.schedule.outputs.run == 'true'
         env:
           TIINGO_API_KEY: ${{ secrets.TIINGO_API_KEY }}
         run: |
           mkdir -p outputs
           set -o pipefail
           python price_feed.py 2>&1 | tee outputs/run.log
+      - name: Calculate and export validated monitor
+        if: steps.schedule.outputs.run == 'true'
+        run: |
+          python buy_sell_monitor.py --feed outputs --universe tickers.csv --output outputs/monitor_results.json
+          python export_monitor.py outputs/monitor_results.json outputs/Stock_Buy_Sell_Monitor.xlsx
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: always() && steps.schedule.outputs.run == 'true'
         with:
           name: stock-price-feed
           path: outputs/

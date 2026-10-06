@@ -5,10 +5,13 @@ const [input,output,previewDir]=process.argv.slice(2);
 if(!input||!output)throw new Error('Usage: node export_monitor.mjs report.json output.xlsx [preview-directory]');
 const report=JSON.parse(await fs.readFile(input,'utf8'));
 const wb=Workbook.create();
-const visible=['Overall Rank','Ticker','Owned/Watch','Price','Price Date','Buy Zone','Primary Win%','52W Win%',
- 'Opportunity Score','Setup Confidence','Evidence Coverage %','Overall Signal/Action','Action Reason',
- 'Short Support','Major Support','Distance to Support %','Short Resistance','Major Resistance','Distance to Resistance %',
- 'Risk/Reward','Basing Status','Bottom/Falling-Knife Status','Volume Confirmation','Rotation Stage','Money Flow'];
+// Optional artifact-tool preview exporter. Production uses export_monitor.py.
+const visible=['Overall Rank','Ticker','Owned/Watch','Price','Price Date','Buy Zone','Primary Win%','52W Closing-Range Win%',
+ 'Opportunity Score','Setup Confidence','Setup Confidence Coverage %','Evidence Coverage %','Bottom Confidence',
+ 'Bottom Confidence Coverage %','Research Coverage %','Overall Signal/Action','Action Reason',
+ 'Short Support','Support Timeframe','Major Support','Distance to Support %','Short Resistance','Major Resistance','Distance to Resistance %',
+ 'Invalidation','Downside %','Upside %','Risk/Reward','Trim Zone','Recent Volume','Average Volume 20D','Relative Volume','20D Net Volume %',
+ 'Basing Status','Bottom/Falling-Knife Status','Volume Confirmation','Rotation Stage','Money Flow'];
 const letters=n=>{let s='';while(n){n--;s=String.fromCharCode(65+n%26)+s;n=Math.floor(n/26);}return s;};
 async function sheet(name,rows,headers){
  const sh=wb.worksheets.add(name);sh.showGridLines=false;
@@ -41,6 +44,7 @@ await sheet('Summary',[
  {Metric:'Report status',Value:report.status,Notes:report.historical?'Historical rebuild; not current trading guidance':'Latest completed session'},
  {Metric:'Market session',Value:report.session,Notes:'All technical history is cut off at this session'},
  ...Object.entries(report.counts).map(([Metric,Value])=>({Metric,Value,Notes:'Computed from validated records'})),
+ ...Object.entries(report.failure||{}).map(([Metric,Value])=>({Metric,Value,Notes:'Freshness failure; no current signals'})),
  {Metric:'Ownership',Value:report.positions.length?'Confirmed source supplied':'Unavailable',Notes:'No hardcoded holdings used'},
  {Metric:'Scoring',Value:'Fixed 20/25/20/20/10/5 weights',Notes:'Missing evidence earns no points; coverage shown separately'}
 ],['Metric','Value','Notes']);
@@ -61,10 +65,10 @@ await sheet('Methodology',[
  {Metric:'Win%',Formula:'(maximum adjusted close − current)/(maximum − minimum) × 100; not probability of winning',Window:'Primary: 2020-03-01 onward; 52W: 365 calendar days'},
  {Metric:'price_suggest_80',Formula:'20% maximum + 80% minimum adjusted close',Window:'Same Primary historical window'},
  {Metric:'Support selection',Formula:'Short: nearest valid candidate. Major: strongest test/confluence cluster, distance breaks ties',Window:'Short 5/21 pivots, MA20; major 63/126/252 pivots, MA50/100/200'},
- {Metric:'Basing',Formula:'Compression ≤12%, |20-session return|≤8%; confirmed adds higher lows, ≥2 support tests, declining ATR, volume contraction',Window:'21 sessions'},
+ {Metric:'Basing',Formula:'Compression ≤10% of 21-day high, |20-session return|≤8%; confirmed adds higher lows, ≥2 support tests, declining ATR, volume contraction',Window:'21 sessions'},
  {Metric:'MACD',Formula:'EMA12 − EMA26; signal EMA9; histogram line − signal',Window:'Adjusted daily close'},
  {Metric:'ATR',Formula:'Wilder-style EWM of max(high−low, |high−previous close|, |low−previous close|)',Window:'14 sessions'},
- {Metric:'OBV20 %',Formula:'Net signed volume / total positive volume × 100; cumulative OBV also retained',Window:'20 sessions'},
+ {Metric:'20D Net Volume %',Formula:'Net signed volume / total positive volume × 100; cumulative OBV also retained',Window:'20 sessions'},
  {Metric:'Breakout',Formula:'Above prior 21-session high; confirmation requires prior-session breakout and relative volume ≥1.5',Window:'Latest session excluded from reference level'},
  {Metric:'Score',Formula:'Fixed conceptual weights; unavailable inputs receive zero evidence points, never neutral constants',Window:'Sources and input dates required'},
  {Metric:'Confidence',Formula:'Equal independent evidence confirmations across support, structure, volume, RS, fundamentals, revisions, flow, valuation, RR, MACD',Window:'0–100; missing confirmation gives zero'},

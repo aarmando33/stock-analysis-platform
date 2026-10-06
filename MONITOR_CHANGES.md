@@ -1,5 +1,16 @@
 # Approved monitor corrections — October 4, 2026
 
+## October 5 report-integrity repair revision
+
+The current production export is portable `export_monitor.py` using openpyxl,
+superseding the runtime/artifact_tool requirement described in the historical
+October 4 notes below. `REPORT_INTEGRITY_AUDIT.md` records the new source repairs,
+remaining gaps and activation gates. Existing master formulas, universe identities
+and scoring weights remain intact. Added report views increase the worksheet
+count beyond the historical 13-tab description below. The daily workflow now
+prepares the JSON and workbook from one checkout; it must be reviewed/merged and
+the external exact-commit pin deliberately updated before activation.
+
 The October 2 generator ran inline in ChatGPT, outside this repository.
 `buy_sell_monitor.py` now owns calculations; `export_monitor.py` owns presentation in the scheduled runtime.
 The authoritative master specification remains unchanged. Existing legacy scripts

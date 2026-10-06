@@ -1527,11 +1527,11 @@ def make_ranked_views(dfagg: pd.DataFrame, min_market_cap: float = 2000) -> dict
         base_filtered = base_filtered[pd.to_numeric(base_filtered["capMil"], errors="coerce") >= float(min_market_cap)].copy()
 
     if base_filtered.empty:
-        print("WARNING: Price/market-cap filters returned zero rows. Ranked views will use price-valid rows when available, otherwise full master.")
+        print("WARNING: Price/market-cap filters returned zero rows. Failed prices remain only in Full Master.")
         if "price_status" in base.columns and base["price_status"].astype(str).eq("OK").any():
             base_filtered = base[base["price_status"].astype(str).eq("OK")].copy()
         else:
-            base_filtered = base.copy()
+            base_filtered = base.iloc[0:0].copy()
 
     regular_sort_cols = [c for c in ["regular_range_score", "win%", "below_price_suggest_80", "price_suggest_80"] if c in base_filtered.columns]
     covid_sort_cols = [c for c in ["covid_range_score", "win%_covid", "below_price_suggest_80_covid", "price_suggest_80_covid"] if c in base_filtered.columns]
@@ -3292,7 +3292,8 @@ def main() -> None:
                 .tail(1)[["Symbol", "AvgVol10d_calc"]]
             ) if "Volume" in df.columns else pd.DataFrame(columns=["Symbol", "AvgVol10d_calc"])
             fundamentals = fundamentals.merge(avg10, on="Symbol", how="left")
-            fundamentals["AvgVol10d"] = pd.to_numeric(fundamentals.get("AvgVol10d"), errors="coerce").fillna(fundamentals["AvgVol10d_calc"])
+            original_volume = fundamentals["AvgVol10d"] if "AvgVol10d" in fundamentals else pd.Series(np.nan,index=fundamentals.index)
+            fundamentals["AvgVol10d"] = pd.to_numeric(original_volume, errors="coerce").fillna(fundamentals["AvgVol10d_calc"])
             fundamentals.drop(columns=["AvgVol10d_calc"], inplace=True, errors="ignore")
 
     with timer("Calculate pivot/support levels"):
