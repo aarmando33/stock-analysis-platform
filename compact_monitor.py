@@ -58,7 +58,9 @@ def prepare(report):
 LABELS={'Primary Win%':'Historical Range Position %','52W Closing-Range Win%':'52W Range Position %',
         'Opportunity Score':'Provisional Score','Overall Signal/Action':'Action',
         'Short Support':'Candidate Support','Short Resistance':'Candidate Resistance',
-        'Short Support Tests':'Touch Episodes','Short Resistance Tests':'Touch Episodes',
+        'Short Support Tests':'Support Test Episodes','Short Resistance Tests':'Resistance Test Episodes',
         'Short Support Source':'Level Source','Short Resistance Source':'Level Source',
         'Technical Bottom Score':'Technical Bottom Score','Bottom Confidence Coverage %':'Full Bottom Input Coverage %',
         'Bottom/Falling-Knife Status':'Bottom Status'}
+
+
