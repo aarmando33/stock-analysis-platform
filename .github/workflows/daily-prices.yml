@@ -9,6 +9,7 @@ on:
       - "tickers.csv"
       - "buy_sell_monitor.py"
       - "export_monitor.py"
+      - "compact_monitor.py"
       - "requirements-feed.txt"
       - "requirements-monitor.txt"
       - "symbol_aliases.csv"

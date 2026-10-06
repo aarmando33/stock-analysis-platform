@@ -4,6 +4,7 @@ on:
     paths:
       - 'buy_sell_monitor.py'
       - 'export_monitor.py'
+      - 'compact_monitor.py'
       - 'export_monitor.mjs'
       - 'scripts/**'
       - 'price_feed.py'
@@ -19,6 +20,7 @@ on:
     paths:
       - 'buy_sell_monitor.py'
       - 'export_monitor.py'
+      - 'compact_monitor.py'
       - 'export_monitor.mjs'
       - 'scripts/**'
       - 'price_feed.py'
@@ -49,6 +51,7 @@ jobs:
             buy_sell_monitor.py
             price_feed.py
             export_monitor.py
+            compact_monitor.py
             export_monitor.mjs
             RUN_MONITOR.ps1
             requirements-monitor.txt

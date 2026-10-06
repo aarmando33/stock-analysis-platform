@@ -69,7 +69,9 @@ def sheet(wb, name, rows, headers=None):
     return sh
 
 
-def build(report):
+def build(report, compact=False):
+    if compact:
+        return build_compact(report)
     wb=Workbook()
     wb.remove(wb.active)
     failure=report.get('failure') or {}
@@ -124,7 +126,7 @@ def build(report):
         {'Metric':'52W Closing-Range Win%','Formula':'Same closing-range position formula','Window':'Trailing 365 calendar days; explicitly a closing-price range metric'},
         {'Metric':'price_suggest_80','Formula':'20% maximum + 80% minimum adjusted close','Window':'Primary historical window'},
         {'Metric':'YTD','Formula':'Current / prior-year last available adjusted close - 1','Window':'Unavailable without prior-year reference'},
-        {'Metric':'Support selection','Formula':'Short: nearest 5/21-session pivot or MA20. Major: strongest 63/126/252-session + MA50/100/200 confluence cluster; distance breaks ties','Window':'Touch episodes within 1%; clusters within 0.5%'},
+        {'Metric':'Support selection','Formula':'Nearest swing-low support / swing-high resistance with >=2 subsequent defended touch episodes. Repeated horizons add no strength; MA/range edges excluded','Window':'5/21 sessions short; 63/126/252 major. Touches within 1%; clusters within 0.5%'},
         {'Metric':'Defended support','Formula':'Selected short support has >=2 independent test episodes, a recent low within 2%, >=2% rebound from that recent low, and current remains above support','Window':'Recent 10 sessions plus short-level test history'},
         {'Metric':'Basing','Formula':'(21D high - 21D low)/21D high <=10% and |20-session return|<=8%; confirmed adds higher low, defended support, declining ATR and volume contraction','Window':'21 sessions'},
         {'Metric':'MACD','Formula':'EMA12 - EMA26; signal EMA9; histogram line - signal','Window':'Adjusted daily close'},
@@ -132,7 +134,7 @@ def build(report):
         {'Metric':'20D Net Volume %','Formula':'20-session signed volume / total volume x 100; cumulative OBV retained separately','Window':'20 sessions'},
         {'Metric':'Breakout','Formula':'Above prior 21-session high; confirmation requires consecutive prior-session break plus relative volume >=1.5','Window':'Latest session excluded from reference level'},
         {'Metric':'Opportunity Score','Formula':'Fixed 20/25/20/20/10/5 buckets; unavailable evidence earns zero and weights are never renormalized','Window':'Evidence Coverage % reports available weighted evidence'},
-        {'Metric':'Confidence','Formula':'Numeric independent evidence score; coverage reported separately','Window':'Setup Confidence and Bottom Confidence each 0-100'},
+        {'Metric':'Bottom score','Formula':'Full seven-input score unavailable if any required input is absent. Technical Bottom Score separately averages available price/volume inputs','Window':'All seven evidence inputs and technical/full coverage are on Calculations; not probabilities'},
         {'Metric':'Bottom status','Formula':'Insufficient evidence when research coverage <50%; otherwise evidence bands apply','Window':'Research evidence remains explicitly unavailable when not sourced'},
         {'Metric':'Action priority','Formula':'Breakdown -> owned Trim/Raise Protection -> coverage gate -> breakout/buy -> proximity actions','Window':'Owned risk warnings are not suppressed by missing buy research'},
         {'Metric':'Ownership','Formula':'Only confirmed sourced positions; otherwise quantity/basis/P&L unavailable','Window':'No historical hardcoded positions'},
@@ -142,13 +144,43 @@ def build(report):
     return wb
 
 
+def build_compact(report):
+    from compact_monitor import prepare, LABELS
+    detailed=build(report)
+    # Reuse the traceable calculation and methodology pages without duplicating
+    # their technical fields across every reader view.
+    for sh in list(detailed):
+        if sh.title not in ['Summary','Calculations','Methodology']:
+            detailed.remove(sh)
+    summary=detailed['Summary']
+    summary.append(['Reader layout','October 2 views plus Calculations','Support/resistance: at most 10 swing candidates, within 3%, >=2 touch episodes.'])
+    summary.append(['Technical estimates','Provisional','Technical bottom/base metrics remain on main lists; all seven inputs remain on Calculations. Full bottom score unavailable when inputs are missing.'])
+    method=detailed['Methodology']
+    method.append(['Reader screens','Swing candidates within 3%, >=2 touch episodes; top 10 by distance.','Same-day extremes and MA-only levels excluded.'])
+    method.append(['Input/code file','SHA256','Source report provenance'])
+    for group in ['source_sha256','input_sha256','code_sha256']:
+        for key,digest in report.get(group,{}).items():method.append([key,digest,group])
+    for name,rows,headers in prepare(report):
+        sh=sheet(detailed,name,rows,headers)
+        for cell in sh[1]:cell.value=LABELS.get(cell.value,cell.value)
+        sh.row_dimensions[1].height=36
+        for i in range(2,sh.max_row+1):sh.row_dimensions[i].height=24
+        for i,h in enumerate(headers,1):
+            sh.column_dimensions[get_column_letter(i)].width=48 if h.endswith(' Source') else 32 if h=='Bottom/Falling-Knife Status' else 22 if h in ['Overall Signal/Action','Money Flow','Basing Status'] else 17
+            if h.startswith('Distance'):
+                for cells in sh.iter_rows(min_row=2,min_col=i,max_col=i):cells[0].number_format='0.00"%"'
+    detailed._sheets=[detailed['Summary'],*[detailed[name] for name,_,_ in prepare(report)],detailed['Calculations'],detailed['Methodology']]
+    return detailed
+
+
 def main():
     p=argparse.ArgumentParser()
     p.add_argument('input')
     p.add_argument('output')
+    p.add_argument('--detailed',action='store_true',help='Export all technical views instead of the concise reader layout')
     a=p.parse_args()
     report=json.loads(Path(a.input).read_text(encoding='utf-8'))
-    wb=build(report)
+    wb=build(report,compact=not a.detailed)
     Path(a.output).parent.mkdir(parents=True, exist_ok=True)
     wb.save(a.output)
     print(a.output)

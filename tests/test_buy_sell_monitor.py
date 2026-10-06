@@ -64,10 +64,11 @@ class Calculations(unittest.TestCase):
     def test_major_sources_and_sides(self):
         g=history();p=g.Close.iloc[-1]
         sup,res=levels(g,p,True)
-        self.assertLess(sup['value'],p)
+        if sup:self.assertLess(sup['value'],p)
         if res:self.assertGreater(res['value'],p)
-        self.assertNotIn('5-session',sup['source'])
-        self.assertNotIn('21-session',sup['source'])
+        if sup:
+            self.assertNotIn('5-session',sup['source'])
+            self.assertNotIn('21-session',sup['source'])
 
     def test_relative_strength_alignment(self):
         s=pd.Series([100,110,121],index=pd.date_range('2026-01-01',periods=3))
@@ -99,8 +100,9 @@ class Calculations(unittest.TestCase):
         g=history();o=calculate(g,g.Close.iloc[-1],'2026-10-02')
         self.assertAlmostEqual(o['50D MA'],g.Close.iloc[-50:].mean())
         self.assertAlmostEqual(o['2W %'],100*(g.Close.iloc[-1]/g.Close.iloc[-11]-1))
-        for name in ['Opportunity Score','Setup Confidence','Bottom Confidence']:
+        for name in ['Opportunity Score','Setup Confidence','Technical Bottom Score']:
             self.assertGreaterEqual(o[name],0);self.assertLessEqual(o[name],100)
+        self.assertTrue(np.isnan(o['Bottom Confidence']))
 
     def test_ipo_and_history_cutoff(self):
         g=history(40);o=calculate(g,g.Close.iloc[-1],'2026-10-02')

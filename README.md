@@ -37,3 +37,19 @@ Historical rebuilds require `--historical --session YYYY-MM-DD` and a matching a
 See `REPORT_INTEGRITY_AUDIT.md` for all 62 assessments and activation gates. Review and merge the integrated change, verify a real GitHub daily run, and deliberately update the external monitor's exact-commit pin before restoring its schedule. Source changes alone do not update that external task.
 
 Legacy research entry points remain available, with different adjustment/scoring conventions. They must not substitute for canonical monitor decisions. No brokerage execution or profitability claim is included.
+# Concise daily workbook
+
+The default Excel export uses the October 2 reader tabs plus Calculations (12 sheets).
+Most reader lists use 14 columns, including technical bottom score, full input coverage, status
+and basing status. Scanner shows up to 15 bottom technical candidates (drawdown at least 15%) and Top Opportunities
+up to 10. Master and Calculations retain all 168 identities.
+
+Support/resistance sheets show up to 10 candidates within 3% of price, with a
+relevant swing-low/high source and at least two subsequent defended touch episodes. MA-only levels,
+same-day extremes, invalid prices and opposite-side levels are excluded. These
+are screening candidates, not validated price floors/ceilings. Full source fields,
+bottom/base heuristics and original scores remain available on Calculations.
+
+`python export_monitor.py report.json report.xlsx --detailed` retains the expanded
+technical export. Range-position percentages are not probabilities of profit;
+bottom/base/strength rules still require independent historical validation.
