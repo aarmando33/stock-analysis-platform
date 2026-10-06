@@ -297,6 +297,12 @@ def add_core_value_calculations(dfagg):
     out["latest_price_date"] = pd.to_datetime(out.get("Date"), errors="coerce")
     failed = set(getattr(scanner, "LAST_REFRESH_FAILED_SYMBOLS", []))
     stale = out["Symbol"].isin(failed) & out["last_close"].notna()
+    # Receiving any rows is insufficient: validate the independently known session.
+    import sys
+    project_root=str(Path(__file__).resolve().parent.parent)
+    if project_root not in sys.path: sys.path.insert(0,project_root)
+    from buy_sell_monitor import latest_session
+    stale |= out['last_close'].notna() & out['latest_price_date'].ne(pd.Timestamp(latest_session()))
     if stale.any():
         out.loc[stale, "price_status"] = "STALE_PRICE"
         print(f"WARNING: {int(stale.sum())} symbols retained cached price data after refresh failed; marked STALE_PRICE.")

@@ -1,0 +1,63 @@
+name: Monitor calculation tests
+on:
+  pull_request:
+    paths:
+      - 'buy_sell_monitor.py'
+      - 'export_monitor.py'
+      - 'export_monitor.mjs'
+      - 'scripts/**'
+      - 'price_feed.py'
+      - 'requirements-feed.txt'
+      - 'symbol_aliases.csv'
+      - '.github/workflows/daily-prices.yml'
+      - 'RUN_MONITOR.ps1'
+      - 'tests/**'
+      - 'requirements-monitor.txt'
+      - 'tickers.csv'
+      - '.github/workflows/monitor-tests.yml'
+  push:
+    paths:
+      - 'buy_sell_monitor.py'
+      - 'export_monitor.py'
+      - 'export_monitor.mjs'
+      - 'scripts/**'
+      - 'price_feed.py'
+      - 'requirements-feed.txt'
+      - 'symbol_aliases.csv'
+      - '.github/workflows/daily-prices.yml'
+      - 'RUN_MONITOR.ps1'
+      - 'tests/**'
+      - 'requirements-monitor.txt'
+      - 'tickers.csv'
+      - '.github/workflows/monitor-tests.yml'
+permissions:
+  contents: read
+jobs:
+  calculations:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements-feed.txt
+      - run: python -m unittest discover -s tests -v
+      - uses: actions/upload-artifact@v4
+        with:
+          name: monitor-v2-source-${{ github.sha }}
+          path: |
+            buy_sell_monitor.py
+            price_feed.py
+            export_monitor.py
+            export_monitor.mjs
+            RUN_MONITOR.ps1
+            requirements-monitor.txt
+            requirements-feed.txt
+            tickers.csv
+            symbol_aliases.csv
+            MONITOR_CHANGES.md
+            REPORT_INTEGRITY_AUDIT.md
+            tests/
+            scripts/
+          retention-days: 30
+          if-no-files-found: error
