@@ -1,9 +1,7 @@
 """Concise reader views; technical estimates remain on Calculations."""
 import math
 
-BASE = ['Ticker','Price','Primary Win%','52W Closing-Range Win%','1W %','1M %',
-        'RSI(14)','Money Flow','Overall Signal/Action','Opportunity Score',
-        'Technical Bottom Score','Bottom Confidence Coverage %','Bottom/Falling-Knife Status','Basing Status']
+BASE = ['Ticker', 'Universe', 'Owned/Watch', 'Qty', 'Cost Basis', 'Price', 'Price Date', 'Price Provider', 'Price Basis', 'price_status', 'Primary Win%', '52W Closing-Range Win%', '1W %', '1M %', '3M %', '6M %', 'YTD %', 'RSI(14)', '20D MA', '50D MA', '100D MA', '200D MA', 'MACD', 'ATR', 'Drawdown From High %', 'Rebound From Recent Low %', 'Basing Status', 'Short Support', 'Major Support', 'Distance to Support %', 'Short Resistance', 'Major Resistance', 'Distance to Resistance %', 'Rotation Score', 'Rotation Stage', 'Money Flow', 'Opportunity Score', 'Setup Confidence', 'Technical Location', 'Overall Signal/Action', 'Unrealized %', 'Technical Bottom Score', 'Bottom Confidence', 'Bottom Confidence Coverage %', 'Bottom/Falling-Knife Status', 'Short Support Tests', 'Short Resistance Tests']
 ORDER = ['Master','Scanner','Top Opportunities','At-Approach Support','At-Approach Resistance',
          'Breakouts','Breakdowns','Owned Positions','Added Names']
 
@@ -52,6 +50,8 @@ def prepare(report):
         if name=='Breakouts':headers=['Ticker','Price','Breakout Level','Breakout Status','Relative Volume','1W %','1M %','Money Flow','Overall Signal/Action']
         if name=='Breakdowns':headers=['Ticker','Price','Breakdown Level','1W %','1M %','Money Flow','Overall Signal/Action']
         if name=='Owned Positions':headers=['Ticker','Qty','Cost Basis','Price','Current Value','Unrealized %','Overall Signal/Action']
+        # Preserve the October 2 reader columns on every reader tab.
+        headers=list(BASE)
         result.append((name,rows,headers))
     return result
 

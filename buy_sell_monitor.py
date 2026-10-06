@@ -72,6 +72,24 @@ def proximity(distance):
     return 'Not Near'
 
 
+def defended_tests(history, value, support):
+    """A new test requires two sessions and a closing move >=2% away.
+
+    A one-bar crossing of the 1% touch band cannot manufacture a second test.
+    """
+    dates=[];armed=True;last_test=-3
+    for i,row in enumerate(history.itertuples()):
+        contact=abs((row.Low if support else row.High)/value-1)<=.01
+        defense=row.Close>=value if support else row.Close<=value
+        departed=row.Close>=value*1.02 if support else row.Close<=value*.98
+        if not armed:
+            if i-last_test>=2 and departed:armed=True
+            continue
+        if armed and contact and defense:
+            dates.append(str(row.Date.date()));last_test=i;armed=False
+    return dates
+
+
 def levels(history, current, major=False):
     """Confirmed swing candidates with two subsequent defended touch episodes.
 
@@ -104,23 +122,25 @@ def levels(history, current, major=False):
         clusters.extend(group)
     eligible={True:[],False:[]}
     for cluster in clusters:
-        support=cluster['kind']=='Low'; value=cluster['value']
-        if not (value<current if support else value>current):continue
+        support=cluster['kind']=='Low'
         # Earliest confirmed pivot establishes a candidate. Later price tests
         # can corroborate it; overlapping windows cannot manufacture strength.
         first=min(cluster['members'],key=lambda x:x['confirmed'])
+        # Anchor both price and date to the same earliest confirmed pivot.
+        # A later member must not move that price backwards in time.
+        value=first['value']
+        if not (value<current if support else value>current):continue
         recent=h.iloc[first['confirmed']+1:].copy()
         broken=recent.Close<value*.99 if support else recent.Close>value*1.01
         if broken.any():recent=recent.loc[recent.index>broken[broken].index[-1]]
-        touch=(recent['Low' if support else 'High']/value-1).abs()<=.01
-        defended=recent.Close>=value if support else recent.Close<=value
-        tests=int(((touch & ~touch.shift(fill_value=False)) & defended).sum())
+        test_dates=defended_tests(recent,value,support)
+        tests=len(test_dates)
         if tests<2:continue
         sources=set().union(*(x['sources'] for x in cluster['members']))
         eligible[support].append({'value':value,'kind':cluster['kind'],'date':first['date'],
             'window':first['window'],'tests':tests,'strength':min(100,20*tests),
             'source':'; '.join(sorted(sources)),
-            'confirmed_date':str(h.loc[first['confirmed'],'Date'].date())})
+            'confirmed_date':str(h.loc[first['confirmed'],'Date'].date()),'test_dates':test_dates})
     def choose(support):
         if not eligible[support]:return None
         return min(eligible[support],key=lambda x:(abs(x['value']/current-1),-x['tests']))
@@ -184,7 +204,7 @@ def calculate(history,price,session,benchmark=None,sector=None,context=None,posi
     out.update({'RSI(14)':float(rs.iloc[-1]),'MACD':float(line.iloc[-1]),
                 'MACD Signal':float(signal.iloc[-1]),'MACD Histogram':float(hist.iloc[-1]),
                 'ATR':float(av.iloc[-1]),'ATR %':float(100*av.iloc[-1]/current)})
-    out['Momentum Status']='Improving' if len(hist)>5 and hist.iloc[-1]>hist.iloc[-6] else 'Deteriorating'
+    out['Momentum Status']='Unavailable' if len(hist)<6 else 'Improving' if hist.iloc[-1]>hist.iloc[-6] else 'Deteriorating'
     v=g.Volume; volume_ok=len(v)>=21 and np.isfinite(v.tail(21)).all() and (v.tail(21)>=0).all() and v.iloc[-21:-1].sum()>0
     mean20=float(v.iloc[-21:-1].mean()) if volume_ok else NAN
     out['Recent Volume']=float(v.iloc[-1]) if volume_ok else NAN
@@ -210,6 +230,8 @@ def calculate(history,price,session,benchmark=None,sector=None,context=None,posi
         out[label+' Date']=level['date'] if level else None
         out[label+' Strength']=level['strength'] if level else NAN
         out[label+' Tests']=level['tests'] if level else NAN
+        out[label+' Confirmed Date']=level['confirmed_date'] if level else None
+        out[label+' Test Dates']='; '.join(level['test_dates']) if level else None
     support=out['Short Support'];resistance=out['Short Resistance']
     out['Distance to Support %']=100*(current-support)/current if finite(support) else NAN
     out['Distance to Resistance %']=100*(resistance-current)/current if finite(resistance) else NAN
@@ -226,14 +248,18 @@ def calculate(history,price,session,benchmark=None,sector=None,context=None,posi
     support_rebound=finite(recent_low) and recent_low>0 and current/recent_low-1>=0.02
     support_holds=bool(finite(support) and out['Short Support Tests']>=2 and support_recent_test and support_rebound and current>=support)
     out['Support Defended']=support_holds
+    out['Support Break Buffer %']=1.0 if finite(support) else NAN
+    out['Support Closes Below Level 10D']=int((g.Close.tail(10)<support).sum()) if finite(support) else None
     source_text=str(out.get('Short Support Source','Unavailable'))
     out['Support Timeframe']=('5-session' if '5-session' in source_text else '21-session' if '21-session' in source_text else '20-session MA' if '20-session MA' in source_text else 'Unavailable')
     out['Basing Status']=('Confirmed Base' if basic and higher_low and support_holds and volatility_contracting and finite(out['Volume Contraction Ratio']) and out['Volume Contraction Ratio']<1 else 'Range Compressing' if basic else 'Not Basing')
-    out['Higher Low Observed']=bool(higher_low)
-    out['ATR Contracting']=bool(volatility_contracting)
+    out['Higher Low Observed']=bool(higher_low) if len(g)>=21 else None
+    atr_known=len(av)>=21 and finite(av.iloc[-21]) and finite(av.iloc[-1])
+    out['ATR Contracting']=bool(volatility_contracting) if atr_known else None
     out['ATR Contraction Ratio']=float(av.iloc[-1]/av.iloc[-21]) if len(av)>=21 and finite(av.iloc[-21]) and av.iloc[-21]>0 else NAN
-    out['Base Range Conditions Met']=bool(basic)
+    out['Base Range Conditions Met']=bool(basic) if len(g)>=21 else None
     if out['Basing Status']=='Confirmed Base':out['Basing Status']='Base Conditions Met'
+    if len(g)<21:out['Basing Status']='Unavailable'
     prior_high=g.High.iloc[-22:-1].max() if len(g)>=22 else NAN
     prior_low=g.Low.iloc[-22:-1].min() if len(g)>=22 else NAN
     breakout=finite(prior_high) and current>prior_high
@@ -302,9 +328,9 @@ def calculate(history,price,session,benchmark=None,sector=None,context=None,posi
               100 if out['MACD Histogram']>0 else 0]
     out['Setup Confidence']=round(evidence_mean(confirms),1)
     out['Setup Confidence Coverage %']=round(100*sum(finite(x) for x in confirms)/len(confirms),1)
-    bottom=[100 if higher_low and not breakdown else 0,
-            100 if volatility_contracting else 0,
-            flow_score,100 if out['Momentum Status']=='Improving' else 0,
+    bottom=[(100 if higher_low and not breakdown else 0) if len(g)>=21 else NAN,
+            (100 if volatility_contracting else 0) if atr_known else NAN,
+            flow_score,(100 if out['Momentum Status']=='Improving' else 0) if len(hist)>=6 else NAN,
             rotation if all(finite(x) for x in relative) else NAN,fundamental,revisions]
     # A full bottom score is unavailable when required research inputs are absent.
     # Keep the observable technical component separate, with no probability claim.
@@ -316,7 +342,7 @@ def calculate(history,price,session,benchmark=None,sector=None,context=None,posi
     out['Bottom Fundamental Evidence']=bottom[5]
     out['Bottom Revision Evidence']=bottom[6]
     available_technical=[v for v in bottom[:4] if finite(v)]
-    out['Technical Bottom Score']=round(sum(available_technical)/len(available_technical),1) if available_technical else NAN
+    out['Technical Bottom Score']=round(sum(available_technical)/4,1) if len(available_technical)==4 else NAN
     out['Technical Bottom Input Coverage %']=round(100*len(available_technical)/4,1)
     out['Bottom Confidence']=round(sum(bottom)/len(bottom),1) if all(finite(v) for v in bottom) else NAN
     out['Bottom Confidence Coverage %']=round(100*sum(finite(x) for x in bottom)/len(bottom),1)
@@ -324,7 +350,7 @@ def calculate(history,price,session,benchmark=None,sector=None,context=None,posi
     research=[rotation if all(finite(x) for x in relative) else NAN,fundamental,revisions,valuation,
               context.get('Institutional/Insider Score',NAN),environment]
     out['Research Coverage %']=round(100*sum(finite(x) for x in research)/len(research),1)
-    status=('Insufficient evidence' if out['Research Coverage %']<50 else
+    status=('Insufficient evidence' if not finite(bc) or out['Research Coverage %']<50 else
             'Strong bottom evidence' if bc>=80 else 'Bottom developing / favorable' if bc>=65 else
             'Stabilization; confirmation needed' if bc>=50 else 'Weak/unconfirmed bounce' if bc>=35 else 'Falling-knife / breakdown risk')
     out['Bottom/Falling-Knife Status']=status if out['Drawdown From High %']<=-15 or breakdown else 'Not a bottom setup'

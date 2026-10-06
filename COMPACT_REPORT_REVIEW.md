@@ -1,36 +1,30 @@
 # October 2 / October 5 reader review
 
-The supplied October 2 report has 11 sheets. October 5 has 20, with 38 repeated
-reader columns, plus 138 calculation fields. Restore the original tab set and add
-Calculations, narrow each reader view, and retain every original calculation.
-Bottom score, bottom input coverage, bottom status and basing status remain on the
-main lists at the user's request, with technical scores explicitly separated from
-the unavailable full bottom score.
+Keep the October 2 reader tabs and columns plus Calculations. Add the missing bottom score, coverage/status and level-test counts. Retain bottom inputs and basing
+observations, with technical evidence separated from the unavailable full score.
 
-## Metrics needing further validation
+## Calculation repairs
 
-- Level selection includes moving averages, range edges and swing highs/lows.
-  A nearby selected candidate alone does not establish defended support or
-  resistance. Shortlists now require the corresponding swing-low/high source,
-  two touch episodes, proximity within 3%, and a date earlier than the report day.
-- Touch counts are heuristic episodes based on lows OR highs within 1%. They do
-  not prove a subsequent bounce or rejection, and may predate pivot confirmation.
-- Confluence strength can include the same pivot repeated across windows. The
-  resulting score is not calibrated; suppress it from reader views pending repair.
-- Basing uses fixed 21-session range/return cutoffs, then adds higher low, selected
-  support, ATR and volume rules. This is a rule-based label, not validated base
-  detection across differently volatile assets.
-- The supplied October 5 workbook reports 0% research coverage for all 168 names.
-  Its seven-input bottom score has three unavailable inputs, giving a maximum
-  observable 57.1. This score cannot establish bottom quality by itself.
-- October 2 reported owned positions; October 5 lacks a confirmed position input.
-  Historical quantities and costs are not carried forward without confirmation.
+- Only confirmed swing lows/highs can qualify as candidate levels. No moving
+  average or current range-edge fallback. A cluster uses the same earliest
+  confirmed pivot for its price, date and confirmation date.
+- Count defending low/high touches within 1% after confirmation and the latest
+  closing break beyond a 1% buffer. A new episode requires a closing departure
+  of 2% and at least two sessions since the previous touch. The departure bar
+  cannot also count as a new test. Actual confirmation and test dates are exposed.
+- Deduplicate overlapping horizons. Strength is 20 points per qualifying episode,
+  capped at 100; this is a heuristic, not a probability.
+- Reader lists require two qualifying episodes and price distance within 3%,
+  with at most ten names. Reader columns retain the October 2 order. A ticker can qualify on both sides of a narrow range.
+- Support Defended describes recent test/rebound conditions, not an unbroken
+  floor. The 1% break buffer and recent closes below the candidate are exposed.
+- Missing bottom inputs produce Insufficient evidence. All seven inputs are kept;
+  the full score requires all seven, and the technical score requires all four
+  technical inputs. Unknown short-history inputs remain unavailable.
+- Basing uses fixed 21-session range/return, higher-low, support, ATR and volume
+  rules. Base Conditions Met describes those observations, not a proven bottom.
 
-No support/resistance formula, score weight, source history or historical holding
-is silently replaced by the compact presentation. The revised calculation now
-uses defended touch episodes AFTER pivot confirmation and after the latest break,
-deduplicates overlapping-window evidence, and excludes moving-average/range-edge
-fallbacks. Full bottom score is unavailable when any input is missing; all seven
-inputs plus a separate technical score are recorded. Base Conditions Met replaces
-the overconfident Confirmed Base label. Price history and score bucket weights are
-unchanged. Historical signal-performance validation is still outstanding.
+The October 5 feed lacks research inputs for all 168 names. The full bottom score
+is unavailable. Historical signal-performance validation remains outstanding.
+Historical October 2 holdings are not carried forward without a confirmed input.
+

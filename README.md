@@ -40,8 +40,8 @@ Legacy research entry points remain available, with different adjustment/scoring
 # Concise daily workbook
 
 The default Excel export uses the October 2 reader tabs plus Calculations (12 sheets).
-Most reader lists use 14 columns, including technical bottom score, full input coverage, status
-and basing status. Scanner shows up to 15 bottom technical candidates (drawdown at least 15%) and Top Opportunities
+Reader lists retain the October 2 columns, adding missing bottom scores, full input coverage/status and level test counts
+alongside the existing basing status. Scanner shows up to 15 bottom technical candidates (drawdown at least 15%) and Top Opportunities
 up to 10. Master and Calculations retain all 168 identities.
 
 Support/resistance sheets show up to 10 candidates within 3% of price, with a
@@ -53,3 +53,4 @@ bottom/base heuristics and original scores remain available on Calculations.
 `python export_monitor.py report.json report.xlsx --detailed` retains the expanded
 technical export. Range-position percentages are not probabilities of profit;
 bottom/base/strength rules still require independent historical validation.
+

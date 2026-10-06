@@ -1,5 +1,5 @@
 import unittest
-from compact_monitor import level_candidate, prepare
+from compact_monitor import level_candidate, prepare, BASE
 from export_monitor import build
 
 class CompactMonitor(unittest.TestCase):
@@ -26,6 +26,10 @@ class CompactMonitor(unittest.TestCase):
         self.assertEqual(len(views['At-Approach Support'][0]),10)
         self.assertEqual(len(views['Top Opportunities'][0]),10)
         self.assertEqual(len(views['Scanner'][0]),15)
+        for _,headers in views.values():self.assertEqual(headers,BASE)
+        for field in ['Qty','Cost Basis','3M %','6M %','YTD %','Short Support','Major Resistance',
+                      'Bottom Confidence','Short Support Tests','Short Resistance Tests']:
+            self.assertIn(field,BASE)
         w=build(report,compact=True)
         self.assertEqual(len(w.sheetnames),12)
         self.assertEqual(w['Master'].max_row,26)

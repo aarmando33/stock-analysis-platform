@@ -126,8 +126,8 @@ def build(report, compact=False):
         {'Metric':'52W Closing-Range Win%','Formula':'Same closing-range position formula','Window':'Trailing 365 calendar days; explicitly a closing-price range metric'},
         {'Metric':'price_suggest_80','Formula':'20% maximum + 80% minimum adjusted close','Window':'Primary historical window'},
         {'Metric':'YTD','Formula':'Current / prior-year last available adjusted close - 1','Window':'Unavailable without prior-year reference'},
-        {'Metric':'Support selection','Formula':'Nearest swing-low support / swing-high resistance with >=2 subsequent defended touch episodes. Repeated horizons add no strength; MA/range edges excluded','Window':'5/21 sessions short; 63/126/252 major. Touches within 1%; clusters within 0.5%'},
-        {'Metric':'Defended support','Formula':'Selected short support has >=2 independent test episodes, a recent low within 2%, >=2% rebound from that recent low, and current remains above support','Window':'Recent 10 sessions plus short-level test history'},
+        {'Metric':'Support selection','Formula':'Nearest swing-low support / swing-high resistance with >=2 subsequent defended touch episodes. Repeated horizons add no strength; MA/range edges excluded','Window':'5/21 sessions short; 63/126/252 major. 1% touch/break buffer; 0.5% clusters; new episode requires 2% closing departure and >=2 sessions'},
+        {'Metric':'Defended support','Formula':'Selected short support has >=2 independent test episodes, a recent low within 2%, >=2% rebound from that recent low, and current remains above support','Window':'Recent 10 sessions plus short-level test history. Buffer and recent closes below support are exposed; not an unbroken floor.'},
         {'Metric':'Basing','Formula':'(21D high - 21D low)/21D high <=10% and |20-session return|<=8%; confirmed adds higher low, defended support, declining ATR and volume contraction','Window':'21 sessions'},
         {'Metric':'MACD','Formula':'EMA12 - EMA26; signal EMA9; histogram line - signal','Window':'Adjusted daily close'},
         {'Metric':'ATR','Formula':'Wilder-style EWM of max(high-low, |high-prev close|, |low-prev close|)','Window':'14 sessions'},
@@ -188,3 +188,4 @@ def main():
 
 if __name__=='__main__':
     main()
+
