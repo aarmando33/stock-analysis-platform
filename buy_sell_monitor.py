@@ -72,54 +72,78 @@ def proximity(distance):
     return 'Not Near'
 
 
-def levels(history, current, major=False):
-    """Separate short pivots (5–21) from 63/126/252-session major evidence.
+def defended_tests(history, value, support):
+    """A new test requires two sessions and a closing move >=2% away.
 
-    Candidate strength is independent touches plus confluence. Levels from
-    moving averages remain identified as dynamic, not historical pivots.
+    A one-bar crossing of the 1% touch band cannot manufacture a second test.
     """
-    candidates = []
+    dates=[];armed=True;last_test=-3
+    for i,row in enumerate(history.itertuples()):
+        contact=abs((row.Low if support else row.High)/value-1)<=.01
+        defense=row.Close>=value if support else row.Close<=value
+        departed=row.Close>=value*1.02 if support else row.Close<=value*.98
+        if not armed:
+            if i-last_test>=2 and departed:armed=True
+            continue
+        if armed and contact and defense:
+            dates.append(str(row.Date.date()));last_test=i;armed=False
+    return dates
+
+
+def levels(history, current, major=False):
+    """Confirmed swing candidates with two subsequent defended touch episodes.
+
+    Repeated horizons do not add evidence. Moving averages and current range
+    edges remain separate indicators, not substitutes for tested pivots.
+    """
+    h=history.sort_values('Date').reset_index(drop=True)
+    candidates={}
     for n in ([63,126,252] if major else [5,21]):
-        g = history.tail(n)
-        if len(g)<n: continue
-        # Confirmed local extrema require two observations on each side.
-        for kind in ['Low','High']:
-            v=g[kind]
-            extreme = v.rolling(5,center=True).min() if kind=='Low' else v.rolling(5,center=True).max()
-            pivots=g.loc[v.eq(extreme),['Date',kind]]
-            for _, p in pivots.iterrows():
-                candidates.append({'value':float(p[kind]),'source':f'{n}-session swing {kind.lower()}',
-                                   'date':str(p.Date.date()),'window':n})
-        for kind,agg in [('Low','min'),('High','max')]:
-            i=getattr(g[kind],agg)()
-            candidates.append({'value':float(i),'source':f'{n}-session range {kind.lower()}',
-                               'date':str(g.loc[g[kind].eq(i),'Date'].iloc[-1].date()),'window':n})
-    for n in ([50,100,200] if major else [20]):
-        if len(history)>=n:
-            candidates.append({'value':float(history.Close.tail(n).mean()),
-                               'source':f'{n}-session MA','date':str(history.Date.iloc[-1].date()),'window':n})
-    # Deduplicate confluence clusters so repeated horizons cannot create fake strength.
+        if len(h)<n:continue
+        start=len(h)-n
+        for i in range(max(2,start),len(h)-2):
+            for kind in ['Low','High']:
+                value=float(h.loc[i,kind])
+                window=h.loc[i-2:i+2,kind]
+                extreme=window.min() if kind=='Low' else window.max()
+                # Reject flat plateaus as multiple independent pivot events.
+                if value!=extreme or int(window.eq(value).sum())!=1:continue
+                key=(kind,str(h.loc[i,'Date'].date()),value)
+                candidate=candidates.setdefault(key,{'value':value,'kind':kind,'date':key[1],
+                    'confirmed':i+2,'window':n,'sources':set()})
+                candidate['sources'].add(f'{n}-session swing {kind.lower()}')
     clusters=[]
-    for c in sorted(candidates,key=lambda x:x['value']):
-        if clusters and abs(c['value']/clusters[-1]['value']-1)<=.005:
-            clusters[-1]['sources'].add(c['source'])
-        else:
-            clusters.append({**c,'sources':{c['source']}})
-    recent=history.tail(126 if major else 21)
-    for c in clusters:
-        touch=((recent.Low/c['value']-1).abs()<=.01)|((recent.High/c['value']-1).abs()<=.01)
-        # Consecutive days are one test, not multiple independent confirmations.
-        c['tests']=int((touch & ~touch.shift(fill_value=False)).sum())
-        c['strength']=min(100,20*c['tests']+10*len(c['sources']))
-        c['source']='; '.join(sorted(c['sources']))
+    for kind in ['Low','High']:
+        group=[]
+        for c in sorted((x for x in candidates.values() if x['kind']==kind),key=lambda x:x['value']):
+            if group and abs(c['value']/group[-1]['value']-1)<=.005:
+                group[-1]['members'].append(c)
+            else:group.append({'value':c['value'],'kind':kind,'members':[c]})
+        clusters.extend(group)
+    eligible={True:[],False:[]}
+    for cluster in clusters:
+        support=cluster['kind']=='Low'
+        # Earliest confirmed pivot establishes a candidate. Later price tests
+        # can corroborate it; overlapping windows cannot manufacture strength.
+        first=min(cluster['members'],key=lambda x:x['confirmed'])
+        # Anchor both price and date to the same earliest confirmed pivot.
+        # A later member must not move that price backwards in time.
+        value=first['value']
+        if not (value<current if support else value>current):continue
+        recent=h.iloc[first['confirmed']+1:].copy()
+        broken=recent.Close<value*.99 if support else recent.Close>value*1.01
+        if broken.any():recent=recent.loc[recent.index>broken[broken].index[-1]]
+        test_dates=defended_tests(recent,value,support)
+        tests=len(test_dates)
+        if tests<2:continue
+        sources=set().union(*(x['sources'] for x in cluster['members']))
+        eligible[support].append({'value':value,'kind':cluster['kind'],'date':first['date'],
+            'window':first['window'],'tests':tests,'strength':min(100,20*tests),
+            'source':'; '.join(sorted(sources)),
+            'confirmed_date':str(h.loc[first['confirmed'],'Date'].date()),'test_dates':test_dates})
     def choose(support):
-        eligible=[c for c in clusters if (c['value']<current if support else c['value']>current)]
-        if not eligible: return None
-        if major:
-            eligible.sort(key=lambda c:(-c['strength'],abs(c['value']/current-1)))
-        else:
-            eligible.sort(key=lambda c:abs(c['value']/current-1))
-        return eligible[0]
+        if not eligible[support]:return None
+        return min(eligible[support],key=lambda x:(abs(x['value']/current-1),-x['tests']))
     return choose(True),choose(False)
 
 
@@ -180,7 +204,7 @@ def calculate(history,price,session,benchmark=None,sector=None,context=None,posi
     out.update({'RSI(14)':float(rs.iloc[-1]),'MACD':float(line.iloc[-1]),
                 'MACD Signal':float(signal.iloc[-1]),'MACD Histogram':float(hist.iloc[-1]),
                 'ATR':float(av.iloc[-1]),'ATR %':float(100*av.iloc[-1]/current)})
-    out['Momentum Status']='Improving' if len(hist)>5 and hist.iloc[-1]>hist.iloc[-6] else 'Deteriorating'
+    out['Momentum Status']='Unavailable' if len(hist)<6 else 'Improving' if hist.iloc[-1]>hist.iloc[-6] else 'Deteriorating'
     v=g.Volume; volume_ok=len(v)>=21 and np.isfinite(v.tail(21)).all() and (v.tail(21)>=0).all() and v.iloc[-21:-1].sum()>0
     mean20=float(v.iloc[-21:-1].mean()) if volume_ok else NAN
     out['Recent Volume']=float(v.iloc[-1]) if volume_ok else NAN
@@ -199,13 +223,8 @@ def calculate(history,price,session,benchmark=None,sector=None,context=None,posi
     out['Money Flow']=('Unavailable' if not finite(flow20) else 'Accumulating' if flow20>=15 else
                        'Entering' if flow20>5 else 'Leaving' if flow20<=-15 else 'Distributing' if flow20<-5 else 'Neutral')
     out['Volume Confirmation']=('Unavailable' if not volume_ok else 'Strong' if out['Relative Volume']>=1.5 else 'Normal' if out['Relative Volume']>=.8 else 'Light')
-    short=levels(g,current);major=levels(g,current,True)
-    for label,level in zip(['Short Support','Short Resistance','Major Support','Major Resistance'],[*short,*major]):
-        out[label]=level['value'] if level else NAN
-        out[label+' Source']=level['source'] if level else 'Unavailable'
-        out[label+' Date']=level['date'] if level else None
-        out[label+' Strength']=level['strength'] if level else NAN
-        out[label+' Tests']=level['tests'] if level else NAN
+    from zone_monitor import zone_inputs, basing_inputs
+    out.update(zone_inputs(g,current))
     support=out['Short Support'];resistance=out['Short Resistance']
     out['Distance to Support %']=100*(current-support)/current if finite(support) else NAN
     out['Distance to Resistance %']=100*(resistance-current)/current if finite(resistance) else NAN
@@ -221,14 +240,25 @@ def calculate(history,price,session,benchmark=None,sector=None,context=None,posi
     support_recent_test=finite(support) and finite(recent_low) and abs(recent_low-support)/current*100<=2
     support_rebound=finite(recent_low) and recent_low>0 and current/recent_low-1>=0.02
     support_holds=bool(finite(support) and out['Short Support Tests']>=2 and support_recent_test and support_rebound and current>=support)
+    zs=out['_zone_data']['selected']['Support Short']
+    support_holds=bool(zs and zs['tests_since_break']>=2 and zs['recent_defense'])
     out['Support Defended']=support_holds
+    out['Support Break Buffer %']=25*out['ATR']/current if finite(support) else NAN
+    out['Support Closes Below Level 10D']=int((g.Close.tail(10)<support).sum()) if finite(support) else None
     source_text=str(out.get('Short Support Source','Unavailable'))
-    out['Support Timeframe']=('5-session' if '5-session' in source_text else '21-session' if '21-session' in source_text else '20-session MA' if '20-session MA' in source_text else 'Unavailable')
+    out['Support Timeframe']='63 observations / 2-bar pivot' if zs else 'Unavailable'
     out['Basing Status']=('Confirmed Base' if basic and higher_low and support_holds and volatility_contracting and finite(out['Volume Contraction Ratio']) and out['Volume Contraction Ratio']<1 else 'Range Compressing' if basic else 'Not Basing')
+    out['Higher Low Observed']=bool(higher_low) if len(g)>=21 else None
+    atr_known=len(av)>=21 and finite(av.iloc[-21]) and finite(av.iloc[-1])
+    out['ATR Contracting']=bool(volatility_contracting) if atr_known else None
+    out['ATR Contraction Ratio']=float(av.iloc[-1]/av.iloc[-21]) if len(av)>=21 and finite(av.iloc[-21]) and av.iloc[-21]>0 else NAN
+    out['Base Range Conditions Met']=bool(basic) if len(g)>=21 else None
+    if out['Basing Status']=='Confirmed Base':out['Basing Status']='Base Conditions Met'
+    if len(g)<21:out['Basing Status']='Unavailable'
     prior_high=g.High.iloc[-22:-1].max() if len(g)>=22 else NAN
     prior_low=g.Low.iloc[-22:-1].min() if len(g)>=22 else NAN
     breakout=finite(prior_high) and current>prior_high
-    breakdown=finite(prior_low) and current<prior_low
+    breakdown=(finite(prior_low) and current<prior_low) or out['_zone_data']['recent_zone_break']
     followed=len(g)>=23 and c.iloc[-2]>g.High.iloc[-23:-2].max()
     confirmed=breakout and followed and out['Relative Volume']>=1.5
     out['Breakout Status']='Confirmed Breakout' if confirmed else 'Breakout Watch' if breakout else 'None'
@@ -237,6 +267,11 @@ def calculate(history,price,session,benchmark=None,sector=None,context=None,posi
     out['Reversal Status']='Reversal Developing' if higher_low and out['Momentum Status']=='Improving' and current>out['20D MA'] and flow20>5 else 'Unconfirmed'
     out['Drawdown From High %']=100*(current/g.loc[g.Date>=pd.Timestamp(session)-pd.Timedelta(days=365),'High'].max()-1)
     out['Rebound From Recent Low %']=100*(current/g.Low.tail(63).min()-1)
+    technical_base=basing_inputs(g,out)
+    out.update(technical_base)
+    start6=pd.Timestamp(session)-pd.DateOffset(months=6)
+    out['Win6mo%']=range_position(g[g.Date>=start6].Close,current)[0] if g.Date.min()<=start6 else NAN
+    out['6M Range Coverage']='Full window' if g.Date.min()<=start6 else 'Insufficient history'
     indexed=g.set_index('Date').Close
     for label,b in [('Market',benchmark),('Sector',sector)]:
         for n in [20,63]: out[f'RS vs {label} {n}D %']=relative_strength(indexed,b,n) if b is not None else NAN
@@ -257,7 +292,7 @@ def calculate(history,price,session,benchmark=None,sector=None,context=None,posi
     out.update({k:context.get(k,NAN) for k in ['Market Cap','Revenue Growth','EPS Growth','Operating Margin','Free Cash Flow','Net Debt / EBITDA','EPS Revision 90D','Forward PE','Peer Forward PE']})
     out['Fundamental Input Coverage %']=context['Fundamental Input Coverage %']
     out['Buy Zone']=f'{support:.2f}–{support*1.02:.2f}' if support_holds else 'Unconfirmed'
-    stop=support-av.iloc[-1] if support_holds and finite(av.iloc[-1]) else NAN
+    stop=zs['low']-av.iloc[-1] if support_holds and finite(av.iloc[-1]) else NAN
     if not finite(stop) or stop<=0: stop=NAN
     out['Invalidation']=float(stop);out['Downside %']=100*(current-stop)/current if finite(stop) and stop>0 else NAN
     out['Upside %']=out['Distance to Resistance %']
@@ -293,21 +328,34 @@ def calculate(history,price,session,benchmark=None,sector=None,context=None,posi
               100 if out['MACD Histogram']>0 else 0]
     out['Setup Confidence']=round(evidence_mean(confirms),1)
     out['Setup Confidence Coverage %']=round(100*sum(finite(x) for x in confirms)/len(confirms),1)
-    bottom=[100 if higher_low and not breakdown else 0,
-            100 if volatility_contracting else 0,
-            flow_score,100 if out['Momentum Status']=='Improving' else 0,
+    bottom=[(100 if higher_low and not breakdown else 0) if len(g)>=21 else NAN,
+            (100 if volatility_contracting else 0) if atr_known else NAN,
+            flow_score,(100 if out['Momentum Status']=='Improving' else 0) if len(hist)>=6 else NAN,
             rotation if all(finite(x) for x in relative) else NAN,fundamental,revisions]
-    out['Bottom Confidence']=round(evidence_mean(bottom),1)
+    # A full bottom score is unavailable when required research inputs are absent.
+    # Keep the observable technical component separate, with no probability claim.
+    out['Bottom Higher-Low Evidence']=bottom[0]
+    out['Bottom Volatility Evidence']=bottom[1]
+    out['Bottom Flow Evidence']=bottom[2]
+    out['Bottom Momentum Evidence']=bottom[3]
+    out['Bottom Rotation Evidence']=bottom[4]
+    out['Bottom Fundamental Evidence']=bottom[5]
+    out['Bottom Revision Evidence']=bottom[6]
+    available_technical=[v for v in bottom[:4] if finite(v)]
+    out['Technical Bottom Score']=round(sum(available_technical)/4,1) if len(available_technical)==4 else NAN
+    out['Technical Bottom Input Coverage %']=round(100*len(available_technical)/4,1)
+    out['Bottom Confidence']=round(sum(bottom)/len(bottom),1) if all(finite(v) for v in bottom) else NAN
     out['Bottom Confidence Coverage %']=round(100*sum(finite(x) for x in bottom)/len(bottom),1)
     bc=out['Bottom Confidence']
     research=[rotation if all(finite(x) for x in relative) else NAN,fundamental,revisions,valuation,
               context.get('Institutional/Insider Score',NAN),environment]
     out['Research Coverage %']=round(100*sum(finite(x) for x in research)/len(research),1)
-    status=('Insufficient evidence' if out['Research Coverage %']<50 else
+    status=('Insufficient evidence' if not finite(bc) or out['Research Coverage %']<50 else
             'Strong bottom evidence' if bc>=80 else 'Bottom developing / favorable' if bc>=65 else
             'Stabilization; confirmation needed' if bc>=50 else 'Weak/unconfirmed bounce' if bc>=35 else 'Falling-knife / breakdown risk')
-    out['Bottom/Falling-Knife Status']=status if out['Drawdown From High %']<=-15 or breakdown else 'Not a bottom setup'
-    if breakdown: action='Falling Knife' if bc<35 else 'Breakdown Warning'
+    out['Research Bottom Status']=status if out['Drawdown From High %']<=-15 or breakdown else 'Not a bottom setup'
+    out['Bottom/Falling-Knife Status']=technical_base['Bottom/Falling-Knife Status']
+    if breakdown: action='Falling Knife' if out['Technical Bottom Score']<35 else 'Breakdown Warning'
     elif position and out['Resistance Proximity']=='Strong Proximity' and out['RSI(14)']>68: action='Trim Watch'
     elif position and out['Money Flow'] in ['Leaving','Distributing']: action='Raise Protection'
     elif coverage<75: action='Hold/Wait'
@@ -436,6 +484,7 @@ def run(feed,universe,session,context_path=None,positions_path=None,benchmarks_p
         ordered=benchmarks.sort_values(['Symbol','Date']).reset_index(drop=True)
         if not benchmarks.reset_index(drop=True)[['Symbol','Date']].equals(ordered[['Symbol','Date']]): raise ValueError('Benchmarks must be ordered by Symbol, Date')
     rows=[]
+    zone_payloads={}
     for sym in expected:
         lr=lat[lat.Symbol==sym].iloc[0]
         raw_history=history[history.Symbol==sym].sort_values('Date')
@@ -483,6 +532,7 @@ def run(feed,universe,session,context_path=None,positions_path=None,benchmarks_p
                         'Owned/Watch':'Owned' if pos else 'Ownership/Cost Basis Unavailable',
                         'Qty':pos['Qty'] if pos else None,'Cost Basis':pos['Cost Basis'] if pos else None,
                         'Ownership Source':pos['Source'] if pos else 'Unavailable'})
+        if '_zone_data' in row:zone_payloads[sym]=row.pop('_zone_data')
         rows.append(row)
     df=pd.DataFrame(rows)
     # Even an all-failed run must export its audit and empty action views.
@@ -511,10 +561,10 @@ def run(feed,universe,session,context_path=None,positions_path=None,benchmarks_p
         'Large-Cap Opportunities':usable[pd.to_numeric(usable['Market Cap'],errors='coerce').ge(10_000_000_000)].sort_values(['Opportunity Score','Setup Confidence','Ticker'],ascending=[False,False,True]).head(25),
     })
     def clean(frame):return json.loads(frame.to_json(orient='records'))
-    return {'session':session,'historical':historical,'status':'INCOMPLETE — NO USABLE PRICES' if not ok.any() else 'HISTORICAL REBUILD' if historical else 'CURRENT — DATA LIMITED' if (~ok).any() or context.empty or benchmarks.empty else 'CURRENT',
+    result={'session':session,'historical':historical,'status':'INCOMPLETE — NO USABLE PRICES' if not ok.any() else 'HISTORICAL REBUILD' if historical else 'CURRENT — DATA LIMITED' if (~ok).any() or context.empty or benchmarks.empty else 'CURRENT',
             'source_sha256':{f:hashlib.sha256((feed/f).read_bytes()).hexdigest() for f in ['price_audit.json','prices_latest.csv','price_history.csv.gz']},
             'research_status':'PRICE-ONLY RESEARCH — CONTEXT/BENCHMARKS UNAVAILABLE' if context.empty or benchmarks.empty else 'SUPPLIED RESEARCH — COVERAGE VARIES BY TICKER',
-            'code_sha256':{f:hashlib.sha256((Path(__file__).parent/f).read_bytes()).hexdigest() for f in ['buy_sell_monitor.py','export_monitor.py']},
+            'code_sha256':{f:hashlib.sha256((Path(__file__).parent/f).read_bytes()).hexdigest() for f in ['buy_sell_monitor.py','export_monitor.py','historical_zones.py','zone_monitor.py','compact_monitor.py','ticker_dashboard.py']},
             'input_sha256':{name:hashlib.sha256(Path(path).read_bytes()).hexdigest() for name,path in [('universe',universe),('context',context_path),('positions',positions_path),('benchmarks',benchmarks_path)] if path},
             'counts':{'Expected':len(expected),'Usable':int(ok.sum()),'Data Limited':int((~ok).sum()),'Triggered':len(views['Scanner']),
                       'Core Expected':len(set(expected)-ADDED_SYMBOLS),'Core Found':int((ok & df.Universe.eq('Core')).sum()),
@@ -524,6 +574,8 @@ def run(feed,universe,session,context_path=None,positions_path=None,benchmarks_p
             'views':{k:clean(v if k in ['Largest Recent Drops','Strongest Rotation'] else v.sort_values(['Overall Rank','Ticker'],na_position='last') if 'Overall Rank' in v else v) for k,v in views.items()},
             'calculations':clean(df),'context':clean(context.reset_index()) if not context.empty else [],
             'positions':clean(positions.reset_index()) if not positions.empty else []}
+    from zone_monitor import report_details
+    return report_details(result,history,zone_payloads,audit.get('generated_at_utc','Unavailable'))
 
 
 def main():
@@ -538,3 +590,4 @@ def main():
 
 
 if __name__=='__main__':main()
+

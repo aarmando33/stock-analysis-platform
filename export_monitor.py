@@ -25,6 +25,8 @@ VISIBLE = [
     'Basing Status','Bottom/Falling-Knife Status','Volume Confirmation','Rotation Stage','Money Flow'
 ]
 OWNED_EXTRA = ['Qty','Cost Basis','Current Value','Unrealized $','Unrealized %']
+_BANDS={'Short Support':['S1 Min','S1 Max'],'Major Support':['S2 Min','S2 Max'],'Short Resistance':['R1 Min','R1 Max'],'Major Resistance':['R2 Min','R2 Max']}
+VISIBLE=[field for key in VISIBLE for field in _BANDS.get(key,[key])]
 
 
 def col_letter(n: int) -> str:
@@ -38,7 +40,8 @@ def col_letter(n: int) -> str:
 def sheet(wb, name, rows, headers=None):
     sh = wb.create_sheet(name)
     headers = headers or list(dict.fromkeys(k for r in rows for k in r)) or ['Status']
-    body = [[r.get(h) for h in headers] for r in rows] if rows else [['No qualifying records'] + [None]*(len(headers)-1)]
+    band_headers={'S1 Min','S1 Max','S2 Min','S2 Max','R1 Min','R1 Max','R2 Min','R2 Max','Bottom Min','Bottom Max','Min','Max'}
+    body = [[('Unavailable' if r.get(h) is None else r.get(h)) if h in band_headers else r.get(h) for h in headers] for r in rows] if rows else [['No qualifying records'] + [None]*(len(headers)-1)]
     for values in [headers, *body]:
         sh.append(values)
     sh.sheet_view.showGridLines = False
@@ -62,14 +65,22 @@ def sheet(wb, name, rows, headers=None):
         fmt = 'General'
         if '%' in h: fmt = '0.0"%"'
         elif any(x in h for x in ['Score','Confidence','Points']) or h in ['Risk/Reward','Relative Volume']: fmt = '0.0'
-        elif h.endswith(('Price','Support','Resistance','MA','Basis','Value')) or h in ['Price','ATR','Invalidation','Unrealized $'] or h.startswith('MACD'): fmt = '0.00'
+        elif h.endswith(('Price','Support','Resistance','MA','Basis','Value')) or h in band_headers or h in ['price_suggest_80','Price','ATR','Invalidation','Unrealized $'] or h.startswith('MACD'): fmt = '0.00##'
         elif 'Volume' in h and 'Ratio' not in h and 'Confirmation' not in h: fmt = '#,##0'
         for cells in sh.iter_rows(min_row=2, min_col=i, max_col=i):
             cells[0].number_format = fmt
+    if name=='Zone Details':
+        sh.column_dimensions['I'].width=75
+        sh.column_dimensions['T'].width=90
+        for i in range(2,sh.max_row+1):
+            lines=max(len(str(sh.cell(i,9).value or ''))/75,len(str(sh.cell(i,20).value or ''))/90)
+            sh.row_dimensions[i].height=min(409,max(60,15*(int(lines)+2)))
     return sh
 
 
-def build(report):
+def build(report, compact=False):
+    if compact:
+        return build_compact(report)
     wb=Workbook()
     wb.remove(wb.active)
     failure=report.get('failure') or {}
@@ -102,6 +113,8 @@ def build(report):
 
     calculations=report.get('calculations',[])
     sheet(wb,'Calculations',calculations)
+    from zone_monitor import DETAIL_HEADERS
+    sheet(wb,'Zone Details',report.get('zone_details',[]),DETAIL_HEADERS)
 
     audit_cols=[
         'Ticker','Universe','price_status','Price Date','Price Provider','Provider Symbol','Price Basis',
@@ -124,16 +137,16 @@ def build(report):
         {'Metric':'52W Closing-Range Win%','Formula':'Same closing-range position formula','Window':'Trailing 365 calendar days; explicitly a closing-price range metric'},
         {'Metric':'price_suggest_80','Formula':'20% maximum + 80% minimum adjusted close','Window':'Primary historical window'},
         {'Metric':'YTD','Formula':'Current / prior-year last available adjusted close - 1','Window':'Unavailable without prior-year reference'},
-        {'Metric':'Support selection','Formula':'Short: nearest 5/21-session pivot or MA20. Major: strongest 63/126/252-session + MA50/100/200 confluence cluster; distance breaks ties','Window':'Touch episodes within 1%; clusters within 0.5%'},
-        {'Metric':'Defended support','Formula':'Selected short support has >=2 independent test episodes, a recent low within 2%, >=2% rebound from that recent low, and current remains above support','Window':'Recent 10 sessions plus short-level test history'},
-        {'Metric':'Basing','Formula':'(21D high - 21D low)/21D high <=10% and |20-session return|<=8%; confirmed adds higher low, defended support, declining ATR and volume contraction','Window':'21 sessions'},
+        {'Metric':'Support selection','Formula':'Nearest/next non-overlapping historical pivot bands. Actual pivot min/max; unique contributing dates. Moving averages separate.','Window':'63/126 observations; wider 252/full-history zones in dashboard. Single-pivot zones remain untested until separately defended.'},
+        {'Metric':'Defended support','Formula':'At least two distinct defended tests after final band confirmation and latest break; a qualifying defense within 21 observations.','Window':'Risk/reward uses the lower support edge minus ATR; no invented buy/trim ranges.'},
+        {'Metric':'Basing','Formula':'10 observations near support or potential bottom; >=8 closes within zone ±0.5 ATR; range <=2 ATR and <=8%; drift <=1 ATR; no two-close break.','Window':'Requires actual touch and at least 30 observations. A candidate is not a confirmed reversal.'},
         {'Metric':'MACD','Formula':'EMA12 - EMA26; signal EMA9; histogram line - signal','Window':'Adjusted daily close'},
         {'Metric':'ATR','Formula':'Wilder-style EWM of max(high-low, |high-prev close|, |low-prev close|)','Window':'14 sessions'},
         {'Metric':'20D Net Volume %','Formula':'20-session signed volume / total volume x 100; cumulative OBV retained separately','Window':'20 sessions'},
         {'Metric':'Breakout','Formula':'Above prior 21-session high; confirmation requires consecutive prior-session break plus relative volume >=1.5','Window':'Latest session excluded from reference level'},
         {'Metric':'Opportunity Score','Formula':'Fixed 20/25/20/20/10/5 buckets; unavailable evidence earns zero and weights are never renormalized','Window':'Evidence Coverage % reports available weighted evidence'},
-        {'Metric':'Confidence','Formula':'Numeric independent evidence score; coverage reported separately','Window':'Setup Confidence and Bottom Confidence each 0-100'},
-        {'Metric':'Bottom status','Formula':'Insufficient evidence when research coverage <50%; otherwise evidence bands apply','Window':'Research evidence remains explicitly unavailable when not sourced'},
+        {'Metric':'Bottom score','Formula':'Full seven-input score unavailable if any required input is absent. Technical Bottom Score separately averages available price/volume inputs','Window':'All seven evidence inputs and technical/full coverage are on Calculations; not probabilities'},
+        {'Metric':'Bottom status','Formula':'Technical bottom/breakdown state uses historical zones, recent lows and basing; Research Bottom Status is separate.','Window':'Missing research does not hide observable technical risk; full bottom score still requires all seven inputs.'},
         {'Metric':'Action priority','Formula':'Breakdown -> owned Trim/Raise Protection -> coverage gate -> breakout/buy -> proximity actions','Window':'Owned risk warnings are not suppressed by missing buy research'},
         {'Metric':'Ownership','Formula':'Only confirmed sourced positions; otherwise quantity/basis/P&L unavailable','Window':'No historical hardcoded positions'},
         {'Metric':'Scope','Formula':'Discovery continuity, anchored VWAP/volume profile, analyst/insider/institutional ingestion and expanded market regime remain outstanding','Window':'Not a claim of full master-spec implementation'},
@@ -142,13 +155,48 @@ def build(report):
     return wb
 
 
+def build_compact(report):
+    from compact_monitor import prepare, LABELS
+    detailed=build(report)
+    # Reuse the traceable calculation and methodology pages without duplicating
+    # their technical fields across every reader view.
+    for sh in list(detailed):
+        if sh.title not in ['Summary','Calculations','Zone Details','Methodology']:
+            detailed.remove(sh)
+    summary=detailed['Summary']
+    summary.append(['Reader layout','October 2 views plus Calculations and Zone Details','Two support/two resistance min-max bands; at most 10 candidates per proximity sheet within 5%. Check evidence status.'])
+    summary.append(['Technical estimates','Provisional','Technical bottom/base metrics remain on main lists; all seven inputs remain on Calculations. Full bottom score unavailable when inputs are missing.'])
+    method=detailed['Methodology']
+    method.append(['Reader screens','Historical zones within 5%; top 10 by distance.','Unconfirmed zones are labeled. Moving averages remain separate references.'])
+    method.append(['Historical zones','S1/R1: 63 observations, radius2; S2/R2:126, radius5; major:252, radius10; deep:all history, radius21.','Minimum history:30/63/252/504. Boundaries are observed pivots; dates, breaks and tests on Zone Details; all depths in ticker dashboard.'])
+    method.append(['Zone evidence','Distinct touch needs a 1-ATR defending close within 10 observations; 3-bar separation plus 1-ATR departure before another test. Two adverse closes beyond 0.25 prior ATR break a zone.','Only defenses after final boundaries became knowable and the latest break count toward strength. Overlapping windows never add tests.'])
+    method.append(['Technical basing','10 observations: >=8 closes in zone ±0.5 ATR; closing range <=2 ATR and <=8%; drift <=1 ATR; actual touch and no two-close adverse break.','Separate potential bottom zones use confirmed recent lows after >=15% drawdown. Candidates, not confirmed reversals.'])
+    method.append(['Win6mo%','Closing-range position over six calendar months; full history required.','Win fields are not profit probabilities. price_suggest_80 is 20% high + 80% low.'])
+    method.append(['Input/code file','SHA256','Source report provenance'])
+    for group in ['source_sha256','input_sha256','code_sha256']:
+        for key,digest in report.get(group,{}).items():method.append([key,digest,group])
+    for name,rows,headers in prepare(report):
+        sh=sheet(detailed,name,rows,headers)
+        for cell in sh[1]:cell.value=LABELS.get(cell.value,cell.value)
+        sh.row_dimensions[1].height=36
+        for i in range(2,sh.max_row+1):sh.row_dimensions[i].height=24
+        for i,h in enumerate(headers,1):
+            sh.column_dimensions[get_column_letter(i)].width=48 if h.endswith(' Source') else 32 if h=='Bottom/Falling-Knife Status' else 22 if h in ['Overall Signal/Action','Money Flow','Basing Status'] else 17
+            if h in ['S1 Status','S2 Status','R1 Status','R2 Status']:sh.column_dimensions[get_column_letter(i)].width=38
+            if h.startswith('Distance'):
+                for cells in sh.iter_rows(min_row=2,min_col=i,max_col=i):cells[0].number_format='0.00"%"'
+    detailed._sheets=[detailed['Summary'],*[detailed[name] for name,_,_ in prepare(report)],detailed['Zone Details'],detailed['Calculations'],detailed['Methodology']]
+    return detailed
+
+
 def main():
     p=argparse.ArgumentParser()
     p.add_argument('input')
     p.add_argument('output')
+    p.add_argument('--detailed',action='store_true',help='Export all technical views instead of the concise reader layout')
     a=p.parse_args()
     report=json.loads(Path(a.input).read_text(encoding='utf-8'))
-    wb=build(report)
+    wb=build(report,compact=not a.detailed)
     Path(a.output).parent.mkdir(parents=True, exist_ok=True)
     wb.save(a.output)
     print(a.output)
@@ -156,3 +204,5 @@ def main():
 
 if __name__=='__main__':
     main()
+
+

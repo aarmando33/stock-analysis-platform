@@ -64,10 +64,11 @@ class Calculations(unittest.TestCase):
     def test_major_sources_and_sides(self):
         g=history();p=g.Close.iloc[-1]
         sup,res=levels(g,p,True)
-        self.assertLess(sup['value'],p)
+        if sup:self.assertLess(sup['value'],p)
         if res:self.assertGreater(res['value'],p)
-        self.assertNotIn('5-session',sup['source'])
-        self.assertNotIn('21-session',sup['source'])
+        if sup:
+            self.assertNotIn('5-session',sup['source'])
+            self.assertNotIn('21-session',sup['source'])
 
     def test_relative_strength_alignment(self):
         s=pd.Series([100,110,121],index=pd.date_range('2026-01-01',periods=3))
@@ -99,8 +100,9 @@ class Calculations(unittest.TestCase):
         g=history();o=calculate(g,g.Close.iloc[-1],'2026-10-02')
         self.assertAlmostEqual(o['50D MA'],g.Close.iloc[-50:].mean())
         self.assertAlmostEqual(o['2W %'],100*(g.Close.iloc[-1]/g.Close.iloc[-11]-1))
-        for name in ['Opportunity Score','Setup Confidence','Bottom Confidence']:
+        for name in ['Opportunity Score','Setup Confidence','Technical Bottom Score']:
             self.assertGreaterEqual(o[name],0);self.assertLessEqual(o[name],100)
+        self.assertTrue(np.isnan(o['Bottom Confidence']))
 
     def test_ipo_and_history_cutoff(self):
         g=history(40);o=calculate(g,g.Close.iloc[-1],'2026-10-02')
@@ -124,16 +126,16 @@ class Calculations(unittest.TestCase):
     def test_defended_support_requires_recent_defense(self):
         g=history()
         o=calculate(g,g.Close.iloc[-1],'2026-10-02')
-        if o['Short Support Tests']>=2:
-            self.assertEqual(o['Support Defended'],
-                             abs(g.Low.tail(10).min()-o['Short Support'])/g.Close.iloc[-1]*100<=2 and
-                             g.Close.iloc[-1]/g.Low.tail(10).min()-1>=.02 and
-                             g.Close.iloc[-1]>=o['Short Support'])
+        z=o['_zone_data']['selected']['Support Short']
+        self.assertEqual(o['Support Defended'],bool(z and z['tests_since_break']>=2 and z['recent_defense']))
+        if not o['Support Defended']:self.assertTrue(np.isnan(o['Risk/Reward']))
 
     def test_bottom_insufficient_when_research_missing(self):
         g=history(descending=True);o=calculate(g,g.Close.iloc[-1],'2026-10-02')
         if o['Drawdown From High %']<=-15 or o['Breakdown Status']!='None':
-            self.assertEqual(o['Bottom/Falling-Knife Status'],'Insufficient evidence')
+            self.assertEqual(o['Research Bottom Status'],'Insufficient evidence')
+            self.assertNotEqual(o['Bottom/Falling-Knife Status'],'Insufficient evidence')
+            self.assertTrue(np.isnan(o['Bottom Confidence']))
 
     def test_owned_warning_precedes_coverage_gate(self):
         g=history()

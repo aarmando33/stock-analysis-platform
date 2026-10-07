@@ -144,10 +144,12 @@ class AdditionalPipeline(unittest.TestCase):
         for cells,expected in zip(wb['Calculations'].iter_rows(min_row=2),report['calculations']):
             for key,cell in zip(headers,cells):
                 value=expected[key]
+                if value is None and key in {'S1 Min','S1 Max','S2 Min','S2 Max','R1 Min','R1 Max','R2 Min','R2 Max','Bottom Min','Bottom Max'}:
+                    self.assertEqual(cell.value,'Unavailable');continue
                 if isinstance(value,(float,int)) and not isinstance(value,bool):
                     self.assertAlmostEqual(cell.value,value)
                 else:self.assertEqual(cell.value,value)
-        self.assertEqual(len(wb.sheetnames),len(report['views'])+4)
+        self.assertEqual(len(wb.sheetnames),len(report['views'])+5)
         self.assertEqual(wb['Master'].max_row,2)
         self.assertEqual(wb['Master'].freeze_panes,'C2')
         self.assertIn('code_sha256',report)
