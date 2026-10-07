@@ -48,7 +48,7 @@ def provider_symbols(symbols, end):
     return mapping
 
 
-def yahoo(symbols: list[str], start: str, end: datetime) -> pd.DataFrame:
+def yahoo(symbols: list[str], start: str, end: datetime, *, _serial_retry=False) -> pd.DataFrame:
     frames: list[pd.DataFrame] = []
     mapping=provider_symbols(symbols,end)
     reverse={value:key for key,value in mapping.items()}
@@ -59,9 +59,9 @@ def yahoo(symbols: list[str], start: str, end: datetime) -> pd.DataFrame:
             try:
                 data = yf.download(
                     chunk, start=start, end=end, auto_adjust=True, repair=True,
-                    group_by="column", threads=True, progress=False, timeout=30,
+                    group_by="column", threads=not _serial_retry, progress=False, timeout=30,
                 )
-                if data is not None and not data.empty:
+                if data is not None and not data.empty and data["Close"].notna().to_numpy().any():
                     break
             except Exception as exc:
                 print(f"Yahoo attempt {attempt}/3 failed: {exc}")
@@ -79,9 +79,18 @@ def yahoo(symbols: list[str], start: str, end: datetime) -> pd.DataFrame:
         frame['Symbol']=frame['Symbol'].map(reverse)
         frames.append(frame)
         time.sleep(1)
-    if not frames:
-        return empty()
-    out = pd.concat(frames, ignore_index=True)
+    out = pd.concat(frames, ignore_index=True) if frames else empty()
+    # A nonempty batch can hide individual failures as all-NaN columns.
+    # Retry those identities independently, without competing SQLite cache writes.
+    if not _serial_retry:
+        available = set(out.loc[pd.to_numeric(out["Close"], errors="coerce").notna(), "Symbol"])
+        for symbol in symbols:
+            if symbol in available:
+                continue
+            print(f"Yahoo {symbol}: retrying missing history serially")
+            recovered = yahoo([symbol], start, end, _serial_retry=True)
+            if not recovered.empty and recovered["Close"].notna().any():
+                out = pd.concat([out.loc[out["Symbol"].ne(symbol)], recovered], ignore_index=True)
     out["Date"] = pd.to_datetime(out["Date"]).dt.tz_localize(None).dt.normalize()
     out["Symbol"] = out["Symbol"].astype(str).str.upper()
     return out[[c for c in [*empty().columns,'Provider Symbol'] if c in out.columns]]
@@ -209,3 +218,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
