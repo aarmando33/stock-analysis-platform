@@ -182,6 +182,7 @@ def build_compact(report):
         for i in range(2,sh.max_row+1):sh.row_dimensions[i].height=24
         for i,h in enumerate(headers,1):
             sh.column_dimensions[get_column_letter(i)].width=48 if h.endswith(' Source') else 32 if h=='Bottom/Falling-Knife Status' else 22 if h in ['Overall Signal/Action','Money Flow','Basing Status'] else 17
+            if h in ['S1 Status','S2 Status','R1 Status','R2 Status']:sh.column_dimensions[get_column_letter(i)].width=38
             if h.startswith('Distance'):
                 for cells in sh.iter_rows(min_row=2,min_col=i,max_col=i):cells[0].number_format='0.00"%"'
     detailed._sheets=[detailed['Summary'],*[detailed[name] for name,_,_ in prepare(report)],detailed['Zone Details'],detailed['Calculations'],detailed['Methodology']]
@@ -203,4 +204,5 @@ def main():
 
 if __name__=='__main__':
     main()
+
 
