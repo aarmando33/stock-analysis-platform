@@ -4,6 +4,9 @@ import math
 BASE = ['Ticker', 'Universe', 'Owned/Watch', 'Qty', 'Cost Basis', 'Price', 'Price Date', 'Price Provider', 'Price Basis', 'price_status', 'Primary Win%', '52W Closing-Range Win%', '1W %', '1M %', '3M %', '6M %', 'YTD %', 'RSI(14)', '20D MA', '50D MA', '100D MA', '200D MA', 'MACD', 'ATR', 'Drawdown From High %', 'Rebound From Recent Low %', 'Basing Status', 'Short Support', 'Major Support', 'Distance to Support %', 'Short Resistance', 'Major Resistance', 'Distance to Resistance %', 'Rotation Score', 'Rotation Stage', 'Money Flow', 'Opportunity Score', 'Setup Confidence', 'Technical Location', 'Overall Signal/Action', 'Unrealized %', 'Technical Bottom Score', 'Bottom Confidence', 'Bottom Confidence Coverage %', 'Bottom/Falling-Knife Status', 'Short Support Tests', 'Short Resistance Tests']
 ORDER = ['Master','Scanner','Top Opportunities','At-Approach Support','At-Approach Resistance',
          'Breakouts','Breakdowns','Owned Positions','Added Names']
+_BANDS={'Short Support':['S1 Min','S1 Max'],'Major Support':['S2 Min','S2 Max'],
+        'Short Resistance':['R1 Min','R1 Max'],'Major Resistance':['R2 Min','R2 Max']}
+BASE=[field for key in BASE[:41] for field in _BANDS.get(key,[key])]+['Bottom Min','Bottom Max','Bottom/Falling-Knife Status','Win6mo%','price_suggest_80']
 
 def numeric(value):
     try:return math.isfinite(float(value))
@@ -11,6 +14,11 @@ def numeric(value):
 
 def level_candidate(row, side):
     """Price proximity is a screen, not evidence of a successful trade."""
+    prefix='S' if side=='Support' else 'R'
+    if prefix+'1 Min' in row:
+        low=row.get(prefix+'1 Min');high=row.get(prefix+'1 Max');price=row.get('Price')
+        if row.get('price_status')!='OK' or not all(numeric(v) for v in [low,high,price]) or price<=0:return False
+        return low<=high and max(low-price,price-high,0)/price*100<=5
     label='Short '+side
     distance=row.get('Distance to '+side+' %')
     level=row.get(label); price=row.get('Price'); tests=row.get(label+' Tests')
@@ -39,7 +47,7 @@ def prepare(report):
             side=name.removeprefix('At-Approach ')
             rows=[r for r in calc if level_candidate(r,side)
                   and r.get('Breakdown Status' if side=='Support' else 'Breakout Status')=='None']
-            rows.sort(key=lambda r:(float(r['Distance to '+side+' %']),-float(r['Short '+side+' Tests']),r['Ticker']))
+            rows.sort(key=lambda r:(float(r['Distance to '+side+' %']),-float(r.get('Short '+side+' Tests') or 0),r['Ticker']))
             rows=rows[:10]
             # Full cluster evidence stays on Calculations; show only the swing
             # source relevant to this screen, without MA/range-edge clutter.
@@ -52,15 +60,19 @@ def prepare(report):
         if name=='Owned Positions':headers=['Ticker','Qty','Cost Basis','Price','Current Value','Unrealized %','Overall Signal/Action']
         # Preserve the October 2 reader columns on every reader tab.
         headers=list(BASE)
+        if name=='At-Approach Support':headers+=['S1 Status','S2 Status']
+        if name=='At-Approach Resistance':headers+=['R1 Status','R2 Status']
+        if name=='Breakouts':headers+=['Breakout Level','Breakout Status']
+        if name=='Breakdowns':headers+=['Breakdown Level','Breakdown Status']
+        if name=='Owned Positions':headers+=['Current Value','Unrealized $']
         result.append((name,rows,headers))
     return result
 
-LABELS={'Primary Win%':'Historical Range Position %','52W Closing-Range Win%':'52W Range Position %',
+LABELS={'Primary Win%':'Win%','52W Closing-Range Win%':'Win52%',
         'Opportunity Score':'Provisional Score','Overall Signal/Action':'Action',
         'Short Support':'Candidate Support','Short Resistance':'Candidate Resistance',
         'Short Support Tests':'Support Test Episodes','Short Resistance Tests':'Resistance Test Episodes',
         'Short Support Source':'Level Source','Short Resistance Source':'Level Source',
         'Technical Bottom Score':'Technical Bottom Score','Bottom Confidence Coverage %':'Full Bottom Input Coverage %',
         'Bottom/Falling-Knife Status':'Bottom Status'}
-
 

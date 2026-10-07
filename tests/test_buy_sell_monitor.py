@@ -126,16 +126,16 @@ class Calculations(unittest.TestCase):
     def test_defended_support_requires_recent_defense(self):
         g=history()
         o=calculate(g,g.Close.iloc[-1],'2026-10-02')
-        if o['Short Support Tests']>=2:
-            self.assertEqual(o['Support Defended'],
-                             abs(g.Low.tail(10).min()-o['Short Support'])/g.Close.iloc[-1]*100<=2 and
-                             g.Close.iloc[-1]/g.Low.tail(10).min()-1>=.02 and
-                             g.Close.iloc[-1]>=o['Short Support'])
+        z=o['_zone_data']['selected']['Support Short']
+        self.assertEqual(o['Support Defended'],bool(z and z['tests_since_break']>=2 and z['recent_defense']))
+        if not o['Support Defended']:self.assertTrue(np.isnan(o['Risk/Reward']))
 
     def test_bottom_insufficient_when_research_missing(self):
         g=history(descending=True);o=calculate(g,g.Close.iloc[-1],'2026-10-02')
         if o['Drawdown From High %']<=-15 or o['Breakdown Status']!='None':
-            self.assertEqual(o['Bottom/Falling-Knife Status'],'Insufficient evidence')
+            self.assertEqual(o['Research Bottom Status'],'Insufficient evidence')
+            self.assertNotEqual(o['Bottom/Falling-Knife Status'],'Insufficient evidence')
+            self.assertTrue(np.isnan(o['Bottom Confidence']))
 
     def test_owned_warning_precedes_coverage_gate(self):
         g=history()

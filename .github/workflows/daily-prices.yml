@@ -10,6 +10,9 @@ on:
       - "buy_sell_monitor.py"
       - "export_monitor.py"
       - "compact_monitor.py"
+      - "historical_zones.py"
+      - "zone_monitor.py"
+      - "ticker_dashboard.py"
       - "requirements-feed.txt"
       - "requirements-monitor.txt"
       - "symbol_aliases.csv"
@@ -57,6 +60,18 @@ jobs:
         run: |
           python buy_sell_monitor.py --feed outputs --universe tickers.csv --output outputs/monitor_results.json
           python export_monitor.py outputs/monitor_results.json outputs/Stock_Buy_Sell_Monitor.xlsx
+          python ticker_dashboard.py outputs/monitor_results.json outputs/Stock_Buy_Sell_Ticker_Dashboard.html
+          python -c "import json,pathlib; r=json.load(open('outputs/monitor_results.json')); s=r['session']; p=pathlib.Path('outputs'); (p/f'Stock_Buy_Sell_Monitor_{s}.xlsx').write_bytes((p/'Stock_Buy_Sell_Monitor.xlsx').read_bytes()); (p/f'Stock_Buy_Sell_Ticker_Dashboard_{s}.html').write_bytes((p/'Stock_Buy_Sell_Ticker_Dashboard.html').read_bytes())"
+      - name: Report links and coverage
+        if: success() && steps.schedule.outputs.run == 'true'
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          r=json.load(open('outputs/monitor_results.json'))
+          print(f"## Stock Buy/Sell Monitor — {r['session']}")
+          print(f"Price coverage: {r['counts']['Usable']}/{r['counts']['Expected']}. Download the stock-price-feed artifact below for the Excel monitor and interactive ticker dashboard.")
+          print("The dashboard includes every universe ticker, two support/resistance bands, deeper historical evidence, Win%/suggested price, and separate MA references. Daily-close snapshot; not streaming prices.")
+          PY
       - uses: actions/upload-artifact@v4
         if: always() && steps.schedule.outputs.run == 'true'
         with:

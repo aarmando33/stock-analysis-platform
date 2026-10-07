@@ -39,16 +39,30 @@ See `REPORT_INTEGRITY_AUDIT.md` for all 62 assessments and activation gates. Rev
 Legacy research entry points remain available, with different adjustment/scoring conventions. They must not substitute for canonical monitor decisions. No brokerage execution or profitability claim is included.
 # Concise daily workbook
 
-The default Excel export uses the October 2 reader tabs plus Calculations (12 sheets).
-Reader lists retain the October 2 columns, adding missing bottom scores, full input coverage/status and level test counts
-alongside the existing basing status. Scanner shows up to 15 bottom technical candidates (drawdown at least 15%) and Top Opportunities
+The default Excel export uses the October 2 reader tabs plus Calculations and Zone Details (13 sheets).
+Reader lists retain the October 2 layout, expanding the four historical level columns into S1/S2/R1/R2 min/max bands,
+with bottom-zone bounds/status, Win6mo% and price_suggest_80. Existing moving-average columns remain populated. Scanner shows up to 15 bottom technical candidates (drawdown at least 15%) and Top Opportunities
 up to 10. Master and Calculations retain all 168 identities.
 
-Support/resistance sheets show up to 10 candidates within 3% of price, with a
-relevant swing-low/high source and at least two subsequent defended touch episodes. MA-only levels,
-same-day extremes, invalid prices and opposite-side levels are excluded. These
-are screening candidates, not validated price floors/ceilings. Full source fields,
-bottom/base heuristics and original scores remain available on Calculations.
+Support/resistance sheets show up to 10 historical zones within 5% of price. Untested bands remain labeled;
+two current-band tests and recent defense are required before a risk/reward setup is available. Moving averages
+never add historical-zone strength. Scores and actions use the same zone evidence as the visible report;
+the fixed weights and missing-research gates are preserved. All seven bottom inputs remain on Calculations.
+
+Every daily `stock-price-feed` GitHub Actions artifact now contains `Stock_Buy_Sell_Monitor.xlsx`,
+`Stock_Buy_Sell_Ticker_Dashboard.html`, dated copies, and the source JSON/data audit. Download and extract
+the artifact, then open the workbook or dashboard. The dashboard has a ticker selector, chart ranges,
+historical bands with dates/tests, Win%/Win52%/Win6mo%/price_suggest_80, and separate 20/50/100/200-day MA
+references inside In-depth bands. This is a daily-close snapshot, not a hosted streaming service.
+
+```sh
+python ticker_dashboard.py outputs/monitor_results.json outputs/Stock_Buy_Sell_Ticker_Dashboard.html
+python ticker_dashboard.py outputs/monitor_results.json outputs/GOOG_dashboard.html --ticker GOOG
+```
+
+Unknown ticker requests fail explicitly; they do not change universe membership. A hosted phone request
+form is separate work. The existing external monitor must use the verified production commit/artifact,
+not its earlier pinned generator; see `PRODUCTION_MONITOR_HANDOFF.md`.
 
 `python export_monitor.py report.json report.xlsx --detailed` retains the expanded
 technical export. Range-position percentages are not probabilities of profit;

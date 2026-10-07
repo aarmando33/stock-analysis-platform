@@ -37,4 +37,8 @@ $reportData = Get-Content -Raw $dataPath | ConvertFrom-Json
 $reportPath = Join-Path $OutputDirectory ("Stock_Buy_Sell_Monitor_"+$reportData.session+$(if ($Historical) {'_REVISED_HISTORICAL'} else {'_REVISED'})+'.xlsx')
 & $pythonExe (Join-Path $PSScriptRoot 'export_monitor.py') $dataPath $reportPath
 if ($LASTEXITCODE -ne 0) { throw 'Workbook export failed' }
+$dashboardPath = Join-Path $OutputDirectory ("Stock_Buy_Sell_Ticker_Dashboard_"+$reportData.session+'.html')
+& $pythonExe (Join-Path $PSScriptRoot 'ticker_dashboard.py') $dataPath $dashboardPath
+if ($LASTEXITCODE -ne 0) { throw 'Ticker dashboard export failed' }
 Write-Output $reportPath
+Write-Output $dashboardPath

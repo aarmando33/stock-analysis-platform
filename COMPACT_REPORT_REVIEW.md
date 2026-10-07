@@ -1,5 +1,10 @@
 # October 2 / October 5 reader review
 
+Historical draft notes below are superseded by the approved historical-zone release.
+Current rules and delivery are documented in README.md and PRODUCTION_MONITOR_HANDOFF.md.
+The production reader now uses two support/two resistance min-max bands and a Zone Details sheet;
+current calculations are in historical_zones.py and zone_monitor.py.
+
 Keep the October 2 reader tabs and columns plus Calculations. Add the missing bottom score, coverage/status and level-test counts. Retain bottom inputs and basing
 observations, with technical evidence separated from the unavailable full score.
 

@@ -60,7 +60,8 @@ class LevelEvidence(unittest.TestCase):
         out=calculate(g,110,'2026-10-05',context=context)
         self.assertGreaterEqual(out['Research Coverage %'],50)
         self.assertTrue(np.isnan(out['Bottom Confidence']))
-        self.assertEqual(out['Bottom/Falling-Knife Status'],'Insufficient evidence')
+        self.assertEqual(out['Research Bottom Status'],'Insufficient evidence')
+        self.assertNotIn(out['Overall Signal/Action'],['Strong Buy Zone','Buy/Accumulate'])
 
     def test_short_history_is_unavailable_not_negative_bottom_evidence(self):
         g=self.frame(5);out=calculate(g,110,'2026-10-05')

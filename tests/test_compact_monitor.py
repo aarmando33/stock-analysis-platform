@@ -26,15 +26,20 @@ class CompactMonitor(unittest.TestCase):
         self.assertEqual(len(views['At-Approach Support'][0]),10)
         self.assertEqual(len(views['Top Opportunities'][0]),10)
         self.assertEqual(len(views['Scanner'][0]),15)
-        for _,headers in views.values():self.assertEqual(headers,BASE)
-        for field in ['Qty','Cost Basis','3M %','6M %','YTD %','Short Support','Major Resistance',
-                      'Bottom Confidence','Short Support Tests','Short Resistance Tests']:
+        for _,headers in views.values():self.assertEqual(headers[:len(BASE)],BASE)
+        self.assertIn('S1 Status',views['At-Approach Support'][1])
+        self.assertIn('R1 Status',views['At-Approach Resistance'][1])
+        self.assertIn('Breakout Level',views['Breakouts'][1])
+        self.assertIn('Breakdown Level',views['Breakdowns'][1])
+        self.assertIn('Current Value',views['Owned Positions'][1])
+        for field in ['Qty','Cost Basis','3M %','6M %','YTD %','S1 Min','S1 Max','S2 Min','S2 Max','R1 Min','R1 Max','R2 Min','R2 Max',
+                      'Bottom Min','Bottom Max','Win6mo%','price_suggest_80']:
             self.assertIn(field,BASE)
         w=build(report,compact=True)
-        self.assertEqual(len(w.sheetnames),12)
+        self.assertEqual(len(w.sheetnames),13)
         self.assertEqual(w['Master'].max_row,26)
         self.assertEqual(w['Calculations'].max_row,26)
-        self.assertIn('Technical Bottom Score',[c.value for c in w['Master'][1]])
+        self.assertIn('Bottom Min',[c.value for c in w['Master'][1]])
         self.assertIn('Bottom Status',[c.value for c in w['Master'][1]])
         self.assertIn('Short Support Tests',[c.value for c in w['Calculations'][1]])
     def test_no_filler_when_no_candidate_qualifies(self):

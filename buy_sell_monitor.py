@@ -223,15 +223,8 @@ def calculate(history,price,session,benchmark=None,sector=None,context=None,posi
     out['Money Flow']=('Unavailable' if not finite(flow20) else 'Accumulating' if flow20>=15 else
                        'Entering' if flow20>5 else 'Leaving' if flow20<=-15 else 'Distributing' if flow20<-5 else 'Neutral')
     out['Volume Confirmation']=('Unavailable' if not volume_ok else 'Strong' if out['Relative Volume']>=1.5 else 'Normal' if out['Relative Volume']>=.8 else 'Light')
-    short=levels(g,current);major=levels(g,current,True)
-    for label,level in zip(['Short Support','Short Resistance','Major Support','Major Resistance'],[*short,*major]):
-        out[label]=level['value'] if level else NAN
-        out[label+' Source']=level['source'] if level else 'Unavailable'
-        out[label+' Date']=level['date'] if level else None
-        out[label+' Strength']=level['strength'] if level else NAN
-        out[label+' Tests']=level['tests'] if level else NAN
-        out[label+' Confirmed Date']=level['confirmed_date'] if level else None
-        out[label+' Test Dates']='; '.join(level['test_dates']) if level else None
+    from zone_monitor import zone_inputs, basing_inputs
+    out.update(zone_inputs(g,current))
     support=out['Short Support'];resistance=out['Short Resistance']
     out['Distance to Support %']=100*(current-support)/current if finite(support) else NAN
     out['Distance to Resistance %']=100*(resistance-current)/current if finite(resistance) else NAN
@@ -247,11 +240,13 @@ def calculate(history,price,session,benchmark=None,sector=None,context=None,posi
     support_recent_test=finite(support) and finite(recent_low) and abs(recent_low-support)/current*100<=2
     support_rebound=finite(recent_low) and recent_low>0 and current/recent_low-1>=0.02
     support_holds=bool(finite(support) and out['Short Support Tests']>=2 and support_recent_test and support_rebound and current>=support)
+    zs=out['_zone_data']['selected']['Support Short']
+    support_holds=bool(zs and zs['tests_since_break']>=2 and zs['recent_defense'])
     out['Support Defended']=support_holds
-    out['Support Break Buffer %']=1.0 if finite(support) else NAN
+    out['Support Break Buffer %']=25*out['ATR']/current if finite(support) else NAN
     out['Support Closes Below Level 10D']=int((g.Close.tail(10)<support).sum()) if finite(support) else None
     source_text=str(out.get('Short Support Source','Unavailable'))
-    out['Support Timeframe']=('5-session' if '5-session' in source_text else '21-session' if '21-session' in source_text else '20-session MA' if '20-session MA' in source_text else 'Unavailable')
+    out['Support Timeframe']='63 observations / 2-bar pivot' if zs else 'Unavailable'
     out['Basing Status']=('Confirmed Base' if basic and higher_low and support_holds and volatility_contracting and finite(out['Volume Contraction Ratio']) and out['Volume Contraction Ratio']<1 else 'Range Compressing' if basic else 'Not Basing')
     out['Higher Low Observed']=bool(higher_low) if len(g)>=21 else None
     atr_known=len(av)>=21 and finite(av.iloc[-21]) and finite(av.iloc[-1])
@@ -263,7 +258,7 @@ def calculate(history,price,session,benchmark=None,sector=None,context=None,posi
     prior_high=g.High.iloc[-22:-1].max() if len(g)>=22 else NAN
     prior_low=g.Low.iloc[-22:-1].min() if len(g)>=22 else NAN
     breakout=finite(prior_high) and current>prior_high
-    breakdown=finite(prior_low) and current<prior_low
+    breakdown=(finite(prior_low) and current<prior_low) or out['_zone_data']['recent_zone_break']
     followed=len(g)>=23 and c.iloc[-2]>g.High.iloc[-23:-2].max()
     confirmed=breakout and followed and out['Relative Volume']>=1.5
     out['Breakout Status']='Confirmed Breakout' if confirmed else 'Breakout Watch' if breakout else 'None'
@@ -272,6 +267,11 @@ def calculate(history,price,session,benchmark=None,sector=None,context=None,posi
     out['Reversal Status']='Reversal Developing' if higher_low and out['Momentum Status']=='Improving' and current>out['20D MA'] and flow20>5 else 'Unconfirmed'
     out['Drawdown From High %']=100*(current/g.loc[g.Date>=pd.Timestamp(session)-pd.Timedelta(days=365),'High'].max()-1)
     out['Rebound From Recent Low %']=100*(current/g.Low.tail(63).min()-1)
+    technical_base=basing_inputs(g,out)
+    out.update(technical_base)
+    start6=pd.Timestamp(session)-pd.DateOffset(months=6)
+    out['Win6mo%']=range_position(g[g.Date>=start6].Close,current)[0] if g.Date.min()<=start6 else NAN
+    out['6M Range Coverage']='Full window' if g.Date.min()<=start6 else 'Insufficient history'
     indexed=g.set_index('Date').Close
     for label,b in [('Market',benchmark),('Sector',sector)]:
         for n in [20,63]: out[f'RS vs {label} {n}D %']=relative_strength(indexed,b,n) if b is not None else NAN
@@ -292,7 +292,7 @@ def calculate(history,price,session,benchmark=None,sector=None,context=None,posi
     out.update({k:context.get(k,NAN) for k in ['Market Cap','Revenue Growth','EPS Growth','Operating Margin','Free Cash Flow','Net Debt / EBITDA','EPS Revision 90D','Forward PE','Peer Forward PE']})
     out['Fundamental Input Coverage %']=context['Fundamental Input Coverage %']
     out['Buy Zone']=f'{support:.2f}–{support*1.02:.2f}' if support_holds else 'Unconfirmed'
-    stop=support-av.iloc[-1] if support_holds and finite(av.iloc[-1]) else NAN
+    stop=zs['low']-av.iloc[-1] if support_holds and finite(av.iloc[-1]) else NAN
     if not finite(stop) or stop<=0: stop=NAN
     out['Invalidation']=float(stop);out['Downside %']=100*(current-stop)/current if finite(stop) and stop>0 else NAN
     out['Upside %']=out['Distance to Resistance %']
@@ -353,7 +353,8 @@ def calculate(history,price,session,benchmark=None,sector=None,context=None,posi
     status=('Insufficient evidence' if not finite(bc) or out['Research Coverage %']<50 else
             'Strong bottom evidence' if bc>=80 else 'Bottom developing / favorable' if bc>=65 else
             'Stabilization; confirmation needed' if bc>=50 else 'Weak/unconfirmed bounce' if bc>=35 else 'Falling-knife / breakdown risk')
-    out['Bottom/Falling-Knife Status']=status if out['Drawdown From High %']<=-15 or breakdown else 'Not a bottom setup'
+    out['Research Bottom Status']=status if out['Drawdown From High %']<=-15 or breakdown else 'Not a bottom setup'
+    out['Bottom/Falling-Knife Status']=technical_base['Bottom/Falling-Knife Status']
     if breakdown: action='Falling Knife' if out['Technical Bottom Score']<35 else 'Breakdown Warning'
     elif position and out['Resistance Proximity']=='Strong Proximity' and out['RSI(14)']>68: action='Trim Watch'
     elif position and out['Money Flow'] in ['Leaving','Distributing']: action='Raise Protection'
@@ -483,6 +484,7 @@ def run(feed,universe,session,context_path=None,positions_path=None,benchmarks_p
         ordered=benchmarks.sort_values(['Symbol','Date']).reset_index(drop=True)
         if not benchmarks.reset_index(drop=True)[['Symbol','Date']].equals(ordered[['Symbol','Date']]): raise ValueError('Benchmarks must be ordered by Symbol, Date')
     rows=[]
+    zone_payloads={}
     for sym in expected:
         lr=lat[lat.Symbol==sym].iloc[0]
         raw_history=history[history.Symbol==sym].sort_values('Date')
@@ -530,6 +532,7 @@ def run(feed,universe,session,context_path=None,positions_path=None,benchmarks_p
                         'Owned/Watch':'Owned' if pos else 'Ownership/Cost Basis Unavailable',
                         'Qty':pos['Qty'] if pos else None,'Cost Basis':pos['Cost Basis'] if pos else None,
                         'Ownership Source':pos['Source'] if pos else 'Unavailable'})
+        if '_zone_data' in row:zone_payloads[sym]=row.pop('_zone_data')
         rows.append(row)
     df=pd.DataFrame(rows)
     # Even an all-failed run must export its audit and empty action views.
@@ -558,10 +561,10 @@ def run(feed,universe,session,context_path=None,positions_path=None,benchmarks_p
         'Large-Cap Opportunities':usable[pd.to_numeric(usable['Market Cap'],errors='coerce').ge(10_000_000_000)].sort_values(['Opportunity Score','Setup Confidence','Ticker'],ascending=[False,False,True]).head(25),
     })
     def clean(frame):return json.loads(frame.to_json(orient='records'))
-    return {'session':session,'historical':historical,'status':'INCOMPLETE — NO USABLE PRICES' if not ok.any() else 'HISTORICAL REBUILD' if historical else 'CURRENT — DATA LIMITED' if (~ok).any() or context.empty or benchmarks.empty else 'CURRENT',
+    result={'session':session,'historical':historical,'status':'INCOMPLETE — NO USABLE PRICES' if not ok.any() else 'HISTORICAL REBUILD' if historical else 'CURRENT — DATA LIMITED' if (~ok).any() or context.empty or benchmarks.empty else 'CURRENT',
             'source_sha256':{f:hashlib.sha256((feed/f).read_bytes()).hexdigest() for f in ['price_audit.json','prices_latest.csv','price_history.csv.gz']},
             'research_status':'PRICE-ONLY RESEARCH — CONTEXT/BENCHMARKS UNAVAILABLE' if context.empty or benchmarks.empty else 'SUPPLIED RESEARCH — COVERAGE VARIES BY TICKER',
-            'code_sha256':{f:hashlib.sha256((Path(__file__).parent/f).read_bytes()).hexdigest() for f in ['buy_sell_monitor.py','export_monitor.py']},
+            'code_sha256':{f:hashlib.sha256((Path(__file__).parent/f).read_bytes()).hexdigest() for f in ['buy_sell_monitor.py','export_monitor.py','historical_zones.py','zone_monitor.py','compact_monitor.py','ticker_dashboard.py']},
             'input_sha256':{name:hashlib.sha256(Path(path).read_bytes()).hexdigest() for name,path in [('universe',universe),('context',context_path),('positions',positions_path),('benchmarks',benchmarks_path)] if path},
             'counts':{'Expected':len(expected),'Usable':int(ok.sum()),'Data Limited':int((~ok).sum()),'Triggered':len(views['Scanner']),
                       'Core Expected':len(set(expected)-ADDED_SYMBOLS),'Core Found':int((ok & df.Universe.eq('Core')).sum()),
@@ -571,6 +574,8 @@ def run(feed,universe,session,context_path=None,positions_path=None,benchmarks_p
             'views':{k:clean(v if k in ['Largest Recent Drops','Strongest Rotation'] else v.sort_values(['Overall Rank','Ticker'],na_position='last') if 'Overall Rank' in v else v) for k,v in views.items()},
             'calculations':clean(df),'context':clean(context.reset_index()) if not context.empty else [],
             'positions':clean(positions.reset_index()) if not positions.empty else []}
+    from zone_monitor import report_details
+    return report_details(result,history,zone_payloads,audit.get('generated_at_utc','Unavailable'))
 
 
 def main():
