@@ -48,7 +48,6 @@ def prepare(report):
             rows=[r for r in calc if level_candidate(r,side)
                   and r.get('Breakdown Status' if side=='Support' else 'Breakout Status')=='None']
             rows.sort(key=lambda r:(float(r['Distance to '+side+' %']),-float(r.get('Short '+side+' Tests') or 0),r['Ticker']))
-            rows=rows[:10]
             # Full cluster evidence stays on Calculations; show only the swing
             # source relevant to this screen, without MA/range-edge clutter.
             kind='swing low' if side=='Support' else 'swing high'
@@ -75,4 +74,3 @@ LABELS={'Primary Win%':'Win%','52W Closing-Range Win%':'Win52%',
         'Short Support Source':'Level Source','Short Resistance Source':'Level Source',
         'Technical Bottom Score':'Technical Bottom Score','Bottom Confidence Coverage %':'Full Bottom Input Coverage %',
         'Bottom/Falling-Knife Status':'Bottom Status'}
-

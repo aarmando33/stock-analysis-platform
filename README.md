@@ -44,7 +44,7 @@ Reader lists retain the October 2 layout, expanding the four historical level co
 with bottom-zone bounds/status, Win6mo% and price_suggest_80. Existing moving-average columns remain populated. Scanner shows up to 15 bottom technical candidates (drawdown at least 15%) and Top Opportunities
 up to 10. Master and Calculations retain all 168 identities.
 
-Support/resistance sheets show up to 10 historical zones within 5% of price. Untested bands remain labeled;
+Support/resistance sheets show all qualifying tickers with historical zones within 5% of price, ordered by proximity, with no ticker limit. Untested bands remain labeled;
 two current-band tests and recent defense are required before a risk/reward setup is available. Moving averages
 never add historical-zone strength. Scores and actions use the same zone evidence as the visible report;
 the fixed weights and missing-research gates are preserved. All seven bottom inputs remain on Calculations.
@@ -67,4 +67,3 @@ not its earlier pinned generator; see `PRODUCTION_MONITOR_HANDOFF.md`.
 `python export_monitor.py report.json report.xlsx --detailed` retains the expanded
 technical export. Range-position percentages are not probabilities of profit;
 bottom/base/strength rules still require independent historical validation.
-
