@@ -164,10 +164,10 @@ def build_compact(report):
         if sh.title not in ['Summary','Calculations','Zone Details','Methodology']:
             detailed.remove(sh)
     summary=detailed['Summary']
-    summary.append(['Reader layout','October 2 views plus Calculations and Zone Details','Two support/two resistance min-max bands; at most 10 candidates per proximity sheet within 5%. Check evidence status.'])
+    summary.append(['Reader layout','October 2 views plus Calculations and Zone Details','Two support/two resistance min-max bands; all qualifying candidates per proximity sheet within 5%, without a ticker limit. Check evidence status.'])
     summary.append(['Technical estimates','Provisional','Technical bottom/base metrics remain on main lists; all seven inputs remain on Calculations. Full bottom score unavailable when inputs are missing.'])
     method=detailed['Methodology']
-    method.append(['Reader screens','Historical zones within 5%; top 10 by distance.','Unconfirmed zones are labeled. Moving averages remain separate references.'])
+    method.append(['Reader screens','Historical zones within 5%; all qualifying tickers ordered by distance, without a ticker limit.','Unconfirmed zones are labeled. Moving averages remain separate references.'])
     method.append(['Historical zones','S1/R1: 63 observations, radius2; S2/R2:126, radius5; major:252, radius10; deep:all history, radius21.','Minimum history:30/63/252/504. Boundaries are observed pivots; dates, breaks and tests on Zone Details; all depths in ticker dashboard.'])
     method.append(['Zone evidence','Distinct touch needs a 1-ATR defending close within 10 observations; 3-bar separation plus 1-ATR departure before another test. Two adverse closes beyond 0.25 prior ATR break a zone.','Only defenses after final boundaries became knowable and the latest break count toward strength. Overlapping windows never add tests.'])
     method.append(['Technical basing','10 observations: >=8 closes in zone ±0.5 ATR; closing range <=2 ATR and <=8%; drift <=1 ATR; actual touch and no two-close adverse break.','Separate potential bottom zones use confirmed recent lows after >=15% drawdown. Candidates, not confirmed reversals.'])
@@ -204,5 +204,3 @@ def main():
 
 if __name__=='__main__':
     main()
-
-

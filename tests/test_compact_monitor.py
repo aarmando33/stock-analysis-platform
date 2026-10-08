@@ -18,12 +18,17 @@ class CompactMonitor(unittest.TestCase):
                        {'Short Support Date':'2026-10-05'},{'price_status':'STALE_PRICE'}]:
             self.assertFalse(level_candidate({**base,**change},'Support'))
         self.assertTrue(level_candidate(self.row(side='Resistance'),'Resistance'))
-    def test_lists_are_short_and_calculations_remain_complete(self):
+    def test_support_resistance_are_complete_and_summary_lists_stay_short(self):
         rows=[self.row(str(i)) for i in range(25)]
+        for row in rows:
+            row.update({key:value for key,value in self.row(row['Ticker'],'Resistance').items()
+                        if 'Resistance' in key})
+            row.update({'S1 Min':99,'S1 Max':99,'R1 Min':101,'R1 Max':101})
         report={'views':{'Master':rows,'Scanner':rows,'Top Opportunities':rows},'calculations':rows,'positions':[],
                 'counts':{},'source_sha256':{},'code_sha256':{}}
         views={name:(rs,hs) for name,rs,hs in prepare(report)}
-        self.assertEqual(len(views['At-Approach Support'][0]),10)
+        self.assertEqual(len(views['At-Approach Support'][0]),25)
+        self.assertEqual(len(views['At-Approach Resistance'][0]),25)
         self.assertEqual(len(views['Top Opportunities'][0]),10)
         self.assertEqual(len(views['Scanner'][0]),15)
         for _,headers in views.values():self.assertEqual(headers[:len(BASE)],BASE)
@@ -39,6 +44,8 @@ class CompactMonitor(unittest.TestCase):
         self.assertEqual(len(w.sheetnames),13)
         self.assertEqual(w['Master'].max_row,26)
         self.assertEqual(w['Calculations'].max_row,26)
+        self.assertEqual(w['At-Approach Support'].max_row,26)
+        self.assertEqual(w['At-Approach Resistance'].max_row,26)
         self.assertIn('Bottom Min',[c.value for c in w['Master'][1]])
         self.assertIn('Bottom Status',[c.value for c in w['Master'][1]])
         self.assertIn('Short Support Tests',[c.value for c in w['Calculations'][1]])
