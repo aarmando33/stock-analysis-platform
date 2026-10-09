@@ -8,6 +8,8 @@ on:
       - 'historical_zones.py'
       - 'zone_monitor.py'
       - 'ticker_dashboard.py'
+      - 'profile_feed.py'
+      - 'profile_enrichment.py'
       - 'export_monitor.mjs'
       - 'scripts/**'
       - 'price_feed.py'
@@ -27,6 +29,8 @@ on:
       - 'historical_zones.py'
       - 'zone_monitor.py'
       - 'ticker_dashboard.py'
+      - 'profile_feed.py'
+      - 'profile_enrichment.py'
       - 'export_monitor.mjs'
       - 'scripts/**'
       - 'price_feed.py'
@@ -61,6 +65,8 @@ jobs:
             historical_zones.py
             zone_monitor.py
             ticker_dashboard.py
+            profile_feed.py
+            profile_enrichment.py
             export_monitor.mjs
             RUN_MONITOR.ps1
             requirements-monitor.txt

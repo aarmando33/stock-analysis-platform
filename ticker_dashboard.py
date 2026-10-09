@@ -132,6 +132,11 @@ def _prepare(data: dict[str, Any]) -> dict[str, Any]:
             "ticker": ticker,
             "name": str(raw.get("name") or ticker),
             "market_cap": _number(raw.get("market_cap")),
+            "sector": str(raw.get("sector") or "Unavailable"),
+            "subsector": str(raw.get("subsector") or "Unavailable"),
+            "profile_retrieved": str(raw.get("profile_retrieved") or "Unavailable"),
+            "action": str(raw.get("action") or "Unavailable"),
+            "action_reason": str(raw.get("action_reason") or "Unavailable"),
             "price": _number(raw.get("price")),
             "win": _number(raw.get("win")),
             "win52": _number(raw.get("win52")),
@@ -147,6 +152,7 @@ def _prepare(data: dict[str, Any]) -> dict[str, Any]:
             "zones": _zones(raw.get("zones"), cutoff),
             "history": _history_rows(raw.get("history"), cutoff),
             "indicators": _safe_value(indicators),
+            "volume": _safe_value(raw.get("volume") or {}),
         })
     tickers.sort(key=lambda item: item["ticker"])
     if not tickers:
@@ -260,12 +266,19 @@ _HTML = r'''<!doctype html>
   function renderMetrics(t) {
     const box=el('metrics');box.replaceChildren();
     const rows=[
-      ['Price',money(t.price),`As of ${cutoff}`],['Market cap',marketCap(t.market_cap),'Snapshot value'],
+      ['Price',money(t.price),`As of ${cutoff}`],['capMil',t.market_cap===null?'Unavailable':fmt(t.market_cap/1e6,1),`USD millions; profile retrieved ${t.profile_retrieved}`],
+      ['Sector',t.sector,'Provider classification'],['Subsector',t.subsector,'Provider industry'],
       ['Win%',percent(t.win),'Historical closing-range position; not a win probability'],['Win52%',percent(t.win52),'52-week closing-range position'],
       ['Win6mo%',percent(t.win6),'Six-month closing-range position; not a return'],['price_suggest_80',money(t.price80),'Price at 80% range position: 20% high + 80% low'],
-      ['Basing status',t.basing,'Technical state'],['Bottom status',t.bottom,'Technical state'],
+      ['Action',t.action,t.action_reason],['Basing status',t.basing,'Technical state'],['Bottom status',t.bottom,'Technical state'],
       ['Base range',t.base_low===null||t.base_high===null?'Unavailable':`${money(t.base_low)} – ${money(t.base_high)}`,t.base_days===null?'Duration unavailable':`${fmt(t.base_days,0)} sessions`],
-      ['Flat range',percent(t.flat_range_pct),'Historical price range'],['Research coverage',percent(t.research_coverage),'Evidence availability']
+      ['Flat range',percent(t.flat_range_pct),'Historical price range'],['Research coverage',percent(t.research_coverage),'Evidence availability'],
+      ['Recent Volume',fmt(t.volume['Recent Volume'],0),'Latest session volume'],
+      ['Average Volume 20D',fmt(t.volume['Average Volume 20D'],0),'Prior 20 sessions'],
+      ['Relative Volume',fmt(t.volume['Relative Volume'],2),'Latest volume / prior 20-session average'],
+      ['20D Net Volume %',percent(t.volume['20D Net Volume %']),'Net signed volume / total volume'],
+      ['Volume Confirmation',t.volume['Volume Confirmation']||'Unavailable','Volume intensity'],
+      ['OBV',fmt(t.volume['OBV'],0),'Cumulative on-balance volume']
     ];
     rows.forEach(r=>box.appendChild(metric(...r)));
   }
