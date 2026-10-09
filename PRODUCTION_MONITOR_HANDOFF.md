@@ -13,6 +13,12 @@ For each delivery:
 
 The workbook preserves all 168 tickers (160 Core + 8 Added), existing MA columns, nearest/next historical-zone min/max fields, bottom bounds/status, and the dated Zone Details sheet. The dashboard additionally exposes major/deep zones and MA support/resistance references.
 
+Support/resistance sheets show every qualifying ticker, without the former 10-row limit. Reader columns begin with Ticker and Price, followed by capMil, Sector and Subsector; Win6mo% follows Win52%, and Action Reason accompanies Action. Reader display omits Universe, price_status, Price Basis and Price Provider. The underlying calculation JSON retains those audit fields and universe membership.
+
+The workflow fetches fresh company profiles after calculations and before either export. Verify `profiles.json` and `symbol_aliases.csv` against their input hashes, and verify `profile_feed.py` and `profile_enrichment.py` alongside the retained calculator code hashes. Profile retrieval UTC and source URLs are separate from the market-session cutoff. capMil is USD millions, Subsector is provider industry, and unavailable metadata stays unavailable. A profile failure must not remove a ticker, alter its action or raise research coverage.
+
+Both reader sheets and the dashboard display the existing calculated Recent Volume, Average Volume 20D, Relative Volume, 20D Net Volume %, Volume Confirmation and OBV. Dashboard sector, action and action reason come from the same enriched snapshot, including when profile retrieval fails. These additions do not change historical zones, scoring or action selection.
+
 Scores, confidence, risk/reward and action selection now consume the same historical-zone evidence. Fixed weights and research gates remain. Full bottom confidence stays unavailable when a required research input is absent; price-only basing and breakdown status remain independently visible.
 
 The existing schedule must retain its timezone and notification preferences when its source pin is updated. This repository does not control an external ChatGPT task's pause state. Do not claim that task was resumed without confirmation from its scheduler.

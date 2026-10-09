@@ -25,12 +25,13 @@ python -m pip install -r requirements-feed.txt
 python -m unittest discover -s tests -v
 python price_feed.py
 python buy_sell_monitor.py --feed outputs --universe tickers.csv --output outputs/monitor_results.json
+python profile_feed.py --input outputs/monitor_results.json --output outputs/monitor_results.json --profiles outputs/profiles.json
 python export_monitor.py outputs/monitor_results.json outputs/Stock_Buy_Sell_Monitor.xlsx
 ```
 
 Python export uses openpyxl and requires no daemon, RPC socket or proprietary runtime. Business calculations stay in the calculator. `RUN_MONITOR.ps1` is a convenience runner for bundled Codex Python. `export_monitor.mjs` remains an optional artifact-tool preview exporter, with that runtime requirement.
 
-Supply `--context`, `--positions`, and `--benchmarks` only with sourced, dated inputs. The daily workflow currently supplies prices only: fundamental/revision/insider/institutional/benchmark/ownership evidence is unavailable unless explicitly provided. Missing evidence lowers coverage and cannot grant a Buy. Empty large-cap/rotation views can reflect missing research rather than an absence of opportunities.
+Supply `--context`, `--positions`, and `--benchmarks` only with sourced, dated inputs. Daily company profiles are display metadata only: fundamental/revision/insider/institutional/benchmark/ownership evidence remains unavailable unless explicitly provided. Missing evidence lowers coverage and cannot grant a Buy. Empty large-cap/rotation views can reflect missing research rather than an absence of opportunities.
 
 Historical rebuilds require `--historical --session YYYY-MM-DD` and a matching archived feed. Cutting off today's adjusted series does not recreate point-in-time fundamentals, constituents or corporate-action knowledge.
 
@@ -55,6 +56,10 @@ the artifact, then open the workbook or dashboard. The dashboard has a ticker se
 historical bands with dates/tests, Win%/Win52%/Win6mo%/price_suggest_80, and separate 20/50/100/200-day MA
 references inside In-depth bands. This is a daily-close snapshot, not a hosted streaming service.
 
+Fresh Yahoo company profiles populate stock name, USD market capitalization in millions (`capMil`), sector and provider industry (`Subsector`). Each ticker records retrieval UTC and source URLs in `profiles.json` and Calculations. Six workers use a 20-second hard limit per ticker; failures remain explicitly unavailable without removing any ticker or changing actions or research coverage. Profiles and symbol aliases are archived with input hashes, alongside the calculator and enrichment code hashes. The profile retrieval date is separate from the price session, including historical rebuilds.
+
+Reader sheets and ticker dashboards include Recent Volume, Average Volume 20D, Relative Volume, 20D Net Volume %, Volume Confirmation and OBV from the existing calculator. These are display additions, not new calculations or scoring inputs.
+
 ```sh
 python ticker_dashboard.py outputs/monitor_results.json outputs/Stock_Buy_Sell_Ticker_Dashboard.html
 python ticker_dashboard.py outputs/monitor_results.json outputs/GOOG_dashboard.html --ticker GOOG
@@ -67,3 +72,4 @@ not its earlier pinned generator; see `PRODUCTION_MONITOR_HANDOFF.md`.
 `python export_monitor.py report.json report.xlsx --detailed` retains the expanded
 technical export. Range-position percentages are not probabilities of profit;
 bottom/base/strength rules still require independent historical validation.
+

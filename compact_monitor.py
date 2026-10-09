@@ -7,6 +7,12 @@ ORDER = ['Master','Scanner','Top Opportunities','At-Approach Support','At-Approa
 _BANDS={'Short Support':['S1 Min','S1 Max'],'Major Support':['S2 Min','S2 Max'],
         'Short Resistance':['R1 Min','R1 Max'],'Major Resistance':['R2 Min','R2 Max']}
 BASE=[field for key in BASE[:41] for field in _BANDS.get(key,[key])]+['Bottom Min','Bottom Max','Bottom/Falling-Knife Status','Win6mo%','price_suggest_80']
+REMOVED_DISPLAY_FIELDS={'Universe','price_status','Price Basis','Price Provider'}
+BASE=['Ticker','Price','capMil','Sector','Subsector']+[k for k in BASE if k not in REMOVED_DISPLAY_FIELDS|{'Ticker','Price','Win6mo%'}]
+BASE.insert(BASE.index('52W Closing-Range Win%')+1,'Win6mo%')
+BASE.insert(BASE.index('Overall Signal/Action')+1,'Action Reason')
+VOLUME_FIELDS=['Recent Volume','Average Volume 20D','Relative Volume','20D Net Volume %','Volume Confirmation','OBV']
+BASE[BASE.index('Money Flow')+1:BASE.index('Money Flow')+1]=VOLUME_FIELDS
 
 def numeric(value):
     try:return math.isfinite(float(value))
@@ -74,3 +80,4 @@ LABELS={'Primary Win%':'Win%','52W Closing-Range Win%':'Win52%',
         'Short Support Source':'Level Source','Short Resistance Source':'Level Source',
         'Technical Bottom Score':'Technical Bottom Score','Bottom Confidence Coverage %':'Full Bottom Input Coverage %',
         'Bottom/Falling-Knife Status':'Bottom Status'}
+
