@@ -78,6 +78,8 @@ def sheet(wb, name, rows, headers=None):
     sh.row_dimensions[1].height = 36
     for i, h in enumerate(headers, 1):
         width = 36 if any(x in h for x in ['Reason','Source','Status','Action','Location','Basis','Evidence','Owned/Watch','Formula','Notes','Timeframe']) else 18
+        if h in ['Stock Name','Sector','Subsector']:
+            width=max(width,min(85,max((len(str(r.get(h) or '')) for r in rows),default=0)+2))
         sh.column_dimensions[get_column_letter(i)].width = width
         fmt = 'General'
         if h.endswith(' Date') or h=='As Of': fmt='mm/dd/yy'
@@ -93,7 +95,7 @@ def sheet(wb, name, rows, headers=None):
         for i in range(2,sh.max_row+1):sh.row_dimensions[i].height=42
     if name in ['Zone Details','Calculations']:
         for i,h in enumerate(headers,1):
-            if any(word in h for word in ['Evidence','dates and prices','Raw Evidence']):
+            if any(word in h.lower() for word in ['evidence','dates and prices']):
                 sh.column_dimensions[get_column_letter(i)].width=85
         for row in sh.iter_rows(min_row=2):
             for cell in row:cell.alignment=Alignment(wrap_text=False,vertical='center')
@@ -194,7 +196,7 @@ def build_compact(report):
             detailed.remove(sh)
     summary=detailed['Summary']
     if report.get('profile_note'):summary.append(['Company profile metadata','USD millions; provider industry as Subsector','Current profile retrieval dates and sources are on Calculations.'])
-    summary.append(['Reader layout','October 2 views plus Calculations and Zone Details','Two support/two resistance min-max bands; all qualifying candidates per proximity sheet within 5%, without a ticker limit. Check evidence status.'])
+    summary.append(['Reader layout','October 2 views plus Calculations and Zone Details','Three support/three resistance bands and dated COVID reference extremes. All qualifying candidates per proximity sheet within 5%, without a ticker limit. Check evidence status.'])
     summary.append(['Technical estimates','Provisional','Technical bottom/base metrics remain on main lists; all seven inputs remain on Calculations. Full bottom score unavailable when inputs are missing.'])
     method=detailed['Methodology']
     if report.get('profile_note'):method.append(['Company profile metadata',report['profile_note'],'Retrieval timestamps and source URLs are on Calculations.'])
@@ -223,7 +225,7 @@ def build_compact(report):
         for i,h in enumerate(headers,1):
             sh.column_dimensions[get_column_letter(i)].width=48 if h.endswith(' Source') else 32 if h=='Bottom/Falling-Knife Status' else 22 if h in ['Overall Signal/Action','Money Flow','Basing Status'] else 17
             if h in ['S1 Status','S2 Status','R1 Status','R2 Status']:sh.column_dimensions[get_column_letter(i)].width=38
-            if h in ['Sector','Subsector']:sh.column_dimensions[get_column_letter(i)].width=32
+            if h in ['Sector','Subsector']:sh.column_dimensions[get_column_letter(i)].width=max(32,sh.column_dimensions[get_column_letter(i)].width)
             if h=='Action Reason':sh.column_dimensions[get_column_letter(i)].width=65
             if h.startswith('Distance'):
                 for cells in sh.iter_rows(min_row=2,min_col=i,max_col=i):cells[0].number_format='0.00"%"'
