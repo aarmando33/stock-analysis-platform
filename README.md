@@ -73,3 +73,8 @@ not its earlier pinned generator; see `PRODUCTION_MONITOR_HANDOFF.md`.
 technical export. Range-position percentages are not probabilities of profit;
 bottom/base/strength rules still require independent historical validation.
 
+### Workbook historical levels
+
+Every ticker view includes S1/S2/S3 and R1/R2/R3 observed min/max bands and boundary dates, COVID and since-COVID adjusted daily low/high references and dates, plus Recent Volume and Average Volume 20D. Short/Next/Major zone rules remain unchanged. COVID is February 19–April 30, 2020 and needs full coverage; since COVID starts March 1, 2020, with later-IPO history explicitly labeled. Earlier feed bars are used only for display references; scores and zones retain the established March 1 start.
+
+Zone Details contains one row per ticker rather than four repeated identity rows. Detailed dates, tests and events remain in columns and JSON. Calculations retains complete audit evidence, with advanced columns collapsed initially. Methodology explains observation counts, when a band was knowable, basing uncertainty and the 15-name drawdown Scanner.

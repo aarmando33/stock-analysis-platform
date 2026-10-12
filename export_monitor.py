@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from datetime import datetime
 from pathlib import Path
 
 from openpyxl import Workbook
@@ -49,9 +50,17 @@ def sheet(wb, name, rows, headers=None):
         if 'Win6mo%' in headers and '52W Closing-Range Win%' in headers:
             headers.remove('Win6mo%');headers.insert(headers.index('52W Closing-Range Win%')+1,'Win6mo%')
     band_headers={'S1 Min','S1 Max','S2 Min','S2 Max','R1 Min','R1 Max','R2 Min','R2 Max','Bottom Min','Bottom Max','Min','Max'}
+    band_headers.update({'S3 Min','S3 Max','R3 Min','R3 Max','Min COVID','Max COVID','Min Since COVID','Max Since COVID'})
     body = [[('Unavailable' if r.get(h) is None else r.get(h)) if h in band_headers else r.get(h) for h in headers] for r in rows] if rows else [['No qualifying records'] + [None]*(len(headers)-1)]
     for values in [headers, *body]:
         sh.append(values)
+    for i,h in enumerate(headers,1):
+        if h.endswith(' Date') or h in ['As Of','Band Known Date']:
+            for cells in sh.iter_rows(min_row=2,min_col=i,max_col=i):
+                c=cells[0]
+                if isinstance(c.value,str) and len(c.value)==10:
+                    try:c.value=datetime.strptime(c.value,'%Y-%m-%d');c.number_format='mm/dd/yy'
+                    except ValueError:pass
     sh.sheet_view.showGridLines = False
     sh.freeze_panes = 'C2' if len(headers) >= 2 else 'B2'
     sh.auto_filter.ref = sh.dimensions
@@ -71,7 +80,8 @@ def sheet(wb, name, rows, headers=None):
         width = 36 if any(x in h for x in ['Reason','Source','Status','Action','Location','Basis','Evidence','Owned/Watch','Formula','Notes','Timeframe']) else 18
         sh.column_dimensions[get_column_letter(i)].width = width
         fmt = 'General'
-        if '%' in h: fmt = '0.0"%"'
+        if h.endswith(' Date') or h=='As Of': fmt='mm/dd/yy'
+        elif '%' in h: fmt = '0.0"%"'
         elif any(x in h for x in ['Score','Confidence','Points']) or h in ['Risk/Reward','Relative Volume']: fmt = '0.0'
         elif h.endswith(('Price','Support','Resistance','MA','Basis','Value')) or h in band_headers or h in ['price_suggest_80','Price','ATR','Invalidation','Unrealized $'] or h.startswith('MACD'): fmt = '0.00##'
         elif ('Volume' in h and 'Ratio' not in h and 'Confirmation' not in h) or h=='OBV': fmt = '#,##0'
@@ -124,11 +134,16 @@ def build(report, compact=False):
         sheet(wb,name,rows,headers)
 
     calculations=report.get('calculations',[])
-    sheet(wb,'Calculations',calculations)
-    from zone_monitor import DETAIL_HEADERS
-    detail_headers=[h if h!='Market Cap' else 'capMil' for h in DETAIL_HEADERS]
-    detail_headers[detail_headers.index('capMil')+1:detail_headers.index('capMil')+1]=['Sector','Subsector']
-    sheet(wb,'Zone Details',report.get('zone_details',[]),detail_headers)
+    from compact_monitor import BASE
+    all_fields=list(dict.fromkeys(k for row in calculations for k in row))
+    front=[k for k in BASE if k in all_fields]
+    advanced=[k for k in all_fields if k not in front]
+    calc_sheet=sheet(wb,'Calculations',calculations,front+advanced)
+    if advanced:
+        calc_sheet.column_dimensions.group(get_column_letter(len(front)+1),get_column_letter(len(front)+len(advanced)),hidden=True)
+        calc_sheet.sheet_properties.outlinePr.summaryRight=False
+    from zone_monitor import ZONE_DETAIL_HEADERS
+    sheet(wb,'Zone Details',report.get('zone_summary',[]),ZONE_DETAIL_HEADERS)
 
     audit_cols=[
         'Ticker','Universe','price_status','Price Date','Price Provider','Provider Symbol','Price Basis',
@@ -191,6 +206,12 @@ def build_compact(report):
     method.append(['Zone evidence','Distinct touch needs a 1-ATR defending close within 10 observations; 3-bar separation plus 1-ATR departure before another test. Two adverse closes beyond 0.25 prior ATR break a zone.','Only defenses after final boundaries became knowable and the latest break count toward strength. Overlapping windows never add tests.'])
     method.append(['Technical basing','10 observations: >=8 closes in zone ±0.5 ATR; closing range <=2 ATR and <=8%; drift <=1 ATR; actual touch and no two-close adverse break.','Separate potential bottom zones use confirmed recent lows after >=15% drawdown. Candidates, not confirmed reversals.'])
     method.append(['Win6mo%','Closing-range position over six calendar months; full history required.','Win fields are not profit probabilities. price_suggest_80 is 20% high + 80% low.'])
+    method.append(['COVID reference window','02/19/2020 through 04/30/2020. Adjusted daily Low/High, with dates. Full window required.','Since COVID: 03/01/2020 through report cutoff. Later IPOs use available history, identified in Zone Details coverage. Extrema are historical references, not automatically defended zones.'])
+    method.append(['Zone Details','One row per ticker. S1/R1 short, S2/R2 next, S3/R3 major, with boundaries, contributing dates, tests and events across columns.','Lookback observations = daily trading bars examined (63, 126, 252), not calendar days or a count of tests.'])
+    method.append(['Band Known Date','Earliest date the final displayed boundaries and qualifying pivot were observable.','A pivot needs subsequent bars to confirm; current-band strength counts defenses only after this date and the latest break.'])
+    method.append(['Basing unconfirmed','A flat base can meet the technical rules while a sustained reversal remains unconfirmed. Near support alone does not meet the basing rules.','10 bars; 8 within +/-0.5 ATR; range <=2 ATR and <=8%; drift <=1 ATR; actual touch; no two-close adverse break; >=30 bars of history.'])
+    method.append(['Scanner','Up to 15 valid-price names at least 15% below their historical high, ordered by Technical Bottom Score then ticker.','A drawdown/bottom-setup shortlist. It includes falling-knife risk and is not a buy list.'])
+    method.append(['Calculations','Full indicator inputs, evidence, scoring components and provenance used to trace results.','Many columns support the audit. JSON retains every field; advanced Excel fields are grouped to the right.'])
     method.append(['Input/code file','SHA256','Source report provenance'])
     for group in ['source_sha256','input_sha256','code_sha256']:
         for key,digest in report.get(group,{}).items():method.append([key,digest,group])

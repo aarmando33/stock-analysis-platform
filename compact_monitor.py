@@ -13,6 +13,9 @@ BASE.insert(BASE.index('52W Closing-Range Win%')+1,'Win6mo%')
 BASE.insert(BASE.index('Overall Signal/Action')+1,'Action Reason')
 VOLUME_FIELDS=['Recent Volume','Average Volume 20D','Relative Volume','20D Net Volume %','Volume Confirmation','OBV']
 BASE[BASE.index('Money Flow')+1:BASE.index('Money Flow')+1]=VOLUME_FIELDS
+_start=BASE.index('S1 Min');_end=BASE.index('R2 Max')+1
+_preserved=[h for h in BASE[_start:_end] if h not in {f'{p}{i} {edge}' for p in ['S','R'] for i in [1,2] for edge in ['Min','Max']}]
+BASE[_start:_end]=[f'S{i} {field}' for i in [1,2,3] for field in ['Min','Max','Min Date','Max Date']]+['Min COVID','Min COVID Date','Min Since COVID','Min Since COVID Date']+[f'R{i} {field}' for i in [1,2,3] for field in ['Min','Max','Min Date','Max Date']]+['Max COVID','Max COVID Date','Max Since COVID','Max Since COVID Date']+_preserved
 
 def numeric(value):
     try:return math.isfinite(float(value))

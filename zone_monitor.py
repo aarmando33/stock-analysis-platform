@@ -4,6 +4,61 @@ import math
 import pandas as pd
 from historical_zones import zones_for, base_state
 
+COVID_START='2020-02-19'
+COVID_END='2020-04-30'
+SINCE_COVID_START='2020-03-01'
+ZONE_PRICE_HEADERS=[f'{p}{i} {field}' for p in ['S','R'] for i in [1,2,3]
+                    for field in ['Min','Max','Min Date','Max Date']]
+REFERENCE_HEADERS=[f'{kind} {window}{suffix}' for kind in ['Min','Max']
+                   for window in ['COVID','Since COVID'] for suffix in ['', ' Date']]
+ZONE_DETAIL_HEADERS=['Ticker','Current Price','Stock Name','capMil','Sector','Subsector','As Of',
+                     'Basing Status','Bottom Status','Recent Volume','Average Volume 20D',
+                     'Win%','Win52%','Win6mo%','price_suggest_80']
+for _prefix in ['S','R']:
+    for _i in [1,2,3]:
+        ZONE_DETAIL_HEADERS += [f'{_prefix}{_i} {field}' for field in
+            ['Min','Max','Min Date','Max Date','Contributing dates and prices','Lookback observations',
+             'Band Known Date','Defended tests','Status','Test / break / reclaim evidence']]
+ZONE_DETAIL_HEADERS += REFERENCE_HEADERS+['COVID Coverage','Since COVID Coverage']
+
+def reference_extremes(history, cutoff):
+    """Adjusted daily extremes; explicit coverage, no future rows or invented prices."""
+    g=history.copy()
+    g['Date']=pd.to_datetime(g.Date)
+    g=g[g.Date.le(pd.Timestamp(cutoff))].sort_values('Date')
+    out={}
+    for label,start,end in [('COVID',COVID_START,COVID_END),('Since COVID',SINCE_COVID_START,cutoff)]:
+        h=g[g.Date.between(pd.Timestamp(start),pd.Timestamp(end))].dropna(subset=['Low','High'])
+        complete=bool(len(h) and h.Date.min()<=pd.Timestamp(start)+pd.Timedelta(days=3)
+                      and h.Date.max()>=pd.Timestamp(end)-pd.Timedelta(days=3))
+        # The COVID crash window needs full coverage. Since-COVID extrema can
+        # describe a later IPO, but its shorter available window is explicit.
+        usable=bool(len(h) and (complete or label=='Since COVID'))
+        out[label+' Coverage']='Full window' if complete else (
+            f"Available history {h.Date.min().date()} to {h.Date.max().date()}" if len(h) else 'Unavailable')
+        for kind,column,fn in [('Min','Low','idxmin'),('Max','High','idxmax')]:
+            key=f'{kind} {label}';row=h.loc[getattr(h[column],fn)()] if usable else None
+            out[key]=float(row[column]) if row is not None else None
+            out[key+' Date']=row.Date.date().isoformat() if row is not None else None
+    return out
+
+def wide_zone_fields(selected):
+    out={}
+    for side,prefix in [('Support','S'),('Resistance','R')]:
+        for i,tier in [(1,'Short'),(2,'Next'),(3,'Major')]:
+            z=selected.get(side+' '+tier);key=f'{prefix}{i}'
+            for field,source in [('Min','low'),('Max','high'),('Status','state'),
+                                 ('Lookback observations','window'),('Band Known Date','band_known_date'),
+                                 ('Defended tests','tests_since_break')]:
+                out[key+' '+field]=z[source] if z else None
+            for edge,source in [('Min','low'),('Max','high')]:
+                out[key+' '+edge+' Date']='; '.join(sorted({m['date'] for m in z['members'] if m['price']==z[source]})) if z else None
+            out[key+' Contributing dates and prices']='; '.join(
+                f"{m['date']}: {m['price']:.6f}" for m in sorted(z['members'],key=lambda m:m['date'])) if z else None
+            out[key+' Test / break / reclaim evidence']='; '.join(
+                f"{e['type']} {e['date']} -> {e.get('resolved','')}" for e in z['events']) if z else None
+    return out
+
 def number(v):
     try:return math.isfinite(float(v))
     except (TypeError,ValueError):return False
@@ -51,10 +106,16 @@ DETAIL_HEADERS=['Ticker','Stock Name','Current Price','Market Cap','As Of','Zone
 
 def report_details(report,histories,payloads,downloaded_at):
     """Derive both presentations from identical calculation records; preserve failed names."""
-    tickers=[];details=[]
+    tickers=[];details=[];summary=[]
     for r in report['calculations']:
         sym=r['Ticker'];p=payloads.get(sym,{});zones=[]
         selected=p.get('selected',{})
+        valid=histories[histories.Symbol.eq(sym)] if r.get('price_status')=='OK' else histories.iloc[:0]
+        wide={**wide_zone_fields(selected),**reference_extremes(valid,report['session'])}
+        r.update(wide)
+        summary.append({**r,'Current Price':r.get('Price') if r.get('price_status')=='OK' else None,
+                        'As Of':report['session'],'Bottom Status':r.get('Bottom/Falling-Knife Status'),
+                        'Win%':r.get('Primary Win%'),'Win52%':r.get('52W Closing-Range Win%')})
         for key,z in list(selected.items())+[(z['side']+' Further Deep',z) for z in p.get('extra_deep',[])]:
             if not z:continue
             zones.append({'id':key,'side':z['side'],'tier':key.removeprefix(z['side']+' '),'low':z['low'],'high':z['high'],
@@ -81,6 +142,12 @@ def report_details(report,histories,payloads,downloaded_at):
             'zones':zones,'history':[{'date':pd.Timestamp(x.Date).date().isoformat(),'open':round(x.Open,6),'high':round(x.High,6),'low':round(x.Low,6),'close':round(x.Close,6),'volume':float(x.Volume) if number(x.Volume) else None} for x in g.itertuples()],
             'indicators':{k:r.get(k) for k in ['price_status','RSI(14)','ATR','20D MA','50D MA','100D MA','200D MA','MACD','1M %','6M %','Drawdown From High %','Base Reference','Base Evidence','Bottom Min','Bottom Max','Bottom Pivot Dates']}})
     report['zone_details']=details
+    report['zone_summary']=summary
+    lookup={row['Ticker']:row for row in report['calculations']}
+    for rows in report.get('views',{}).values():
+        for row in rows:
+            original=lookup[row['Ticker']]
+            row.update({k:original.get(k) for k in ZONE_PRICE_HEADERS+REFERENCE_HEADERS+['COVID Coverage','Since COVID Coverage']})
     report['ticker_dashboard_data']={'cutoff':report['session'],'downloaded_at':downloaded_at,'tickers':tickers}
     report['zone_method']='Historical pivot zones v1; unique post-confirmation tests; technical basing separate from research coverage'
     return report

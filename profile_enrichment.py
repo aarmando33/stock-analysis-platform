@@ -18,7 +18,7 @@ def enrich(report, profiles):
                 'Profile Source':p.get('Profile Source','Unavailable'),
                 'Market Cap Source':p.get('Market Cap Source','Unavailable'),
                 'Profile Error':p.get('Profile Error','')}
-    for rows in [result.get('calculations',[]),result.get('zone_details',[]),*result.get('views',{}).values()]:
+    for rows in [result.get('calculations',[]),result.get('zone_details',[]),result.get('zone_summary',[]),*result.get('views',{}).values()]:
         for r in rows:r.update(fields(r['Ticker']))
     calc={r['Ticker']:r for r in result['calculations']}
     for t in result.get('ticker_dashboard_data',{}).get('tickers',[]):
