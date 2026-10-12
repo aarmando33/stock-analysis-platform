@@ -56,7 +56,7 @@ def wide_zone_fields(selected):
             out[key+' Contributing dates and prices']='; '.join(
                 f"{m['date']}: {m['price']:.6f}" for m in sorted(z['members'],key=lambda m:m['date'])) if z else None
             out[key+' Test / break / reclaim evidence']='; '.join(
-                f"{e['type']} {e['date']} -> {e.get('resolved','')}" for e in z['events']) if z else None
+                f"{e['type']} {e['date']} -> {e.get('resolved','')}" for e in z['events']) if z and z['events'] else None
     return out
 
 def number(v):
