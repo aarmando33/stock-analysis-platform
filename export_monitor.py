@@ -225,7 +225,7 @@ def build_compact(report):
         for i,h in enumerate(headers,1):
             sh.column_dimensions[get_column_letter(i)].width=48 if h.endswith(' Source') else 32 if h=='Bottom/Falling-Knife Status' else 22 if h in ['Overall Signal/Action','Money Flow','Basing Status'] else 17
             if h in ['S1 Status','S2 Status','R1 Status','R2 Status']:sh.column_dimensions[get_column_letter(i)].width=38
-            if h in ['Sector','Subsector']:sh.column_dimensions[get_column_letter(i)].width=max(32,sh.column_dimensions[get_column_letter(i)].width)
+            if h in ['Sector','Subsector']:sh.column_dimensions[get_column_letter(i)].width=max(32,min(85,max((len(str(r.get(h) or '')) for r in rows),default=0)+2))
             if h=='Action Reason':sh.column_dimensions[get_column_letter(i)].width=65
             if h.startswith('Distance'):
                 for cells in sh.iter_rows(min_row=2,min_col=i,max_col=i):cells[0].number_format='0.00"%"'
