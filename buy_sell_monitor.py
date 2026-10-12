@@ -523,7 +523,9 @@ def run(feed,universe,session,context_path=None,positions_path=None,benchmarks_p
                 b=benchmarks[(benchmarks.Symbol==symbol)&(benchmarks.Date<=pd.Timestamp(session))]
                 if b.empty or b.Date.max()!=pd.Timestamp(session):return None
                 return b.set_index('Date').Close
-            row.update(calculate(g,row['Price'],session,bm('SPY'),bm(ctx.get('Sector Benchmark','')),ctx,pos))
+            # Earlier COVID reference bars are display-only. Preserve the
+            # established calculation/zone/scoring history beginning March 1.
+            row.update(calculate(g[g.Date>=pd.Timestamp('2020-03-01')],row['Price'],session,bm('SPY'),bm(ctx.get('Sector Benchmark','')),ctx,pos))
             row['Context Source']=ctx.get('Source','Unavailable');row['Context As Of']=ctx.get('As Of',None)
             row['Context Raw Evidence']=ctx.get('Raw Evidence','Unavailable')
             row['Ownership Source']=pos.get('Source') if pos else 'Unavailable'

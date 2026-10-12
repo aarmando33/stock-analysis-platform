@@ -182,10 +182,11 @@ def main() -> None:
     symbols = tickers()
     end = exclusive_end()
     session = (end-timedelta(days=1)).date().isoformat()
-    history = yahoo(symbols, "2020-03-01", end)
+    # Include the defined COVID crash window for separately labeled extrema.
+    history = yahoo(symbols, "2020-02-19", end)
     preliminary = audit_history(history, symbols, session)
     missing = preliminary.loc[preliminary.price_status.ne('OK'),'Symbol'].tolist()
-    fallback = tiingo(missing, "2020-03-01", end)
+    fallback = tiingo(missing, "2020-02-19", end)
     if not fallback.empty:
         replacement = audit_history(fallback, missing, session)
         usable = replacement.loc[replacement.price_status.eq('OK'),'Symbol'].tolist()
@@ -218,4 +219,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

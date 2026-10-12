@@ -13,6 +13,8 @@ on:
       - "historical_zones.py"
       - "zone_monitor.py"
       - "ticker_dashboard.py"
+      - "profile_feed.py"
+      - "profile_enrichment.py"
       - "requirements-feed.txt"
       - "requirements-monitor.txt"
       - "symbol_aliases.csv"
@@ -59,6 +61,7 @@ jobs:
         if: steps.schedule.outputs.run == 'true'
         run: |
           python buy_sell_monitor.py --feed outputs --universe tickers.csv --output outputs/monitor_results.json
+          python profile_feed.py --input outputs/monitor_results.json --output outputs/monitor_results.json --profiles outputs/profiles.json
           python export_monitor.py outputs/monitor_results.json outputs/Stock_Buy_Sell_Monitor.xlsx
           python ticker_dashboard.py outputs/monitor_results.json outputs/Stock_Buy_Sell_Ticker_Dashboard.html
           python -c "import json,pathlib; r=json.load(open('outputs/monitor_results.json')); s=r['session']; p=pathlib.Path('outputs'); (p/f'Stock_Buy_Sell_Monitor_{s}.xlsx').write_bytes((p/'Stock_Buy_Sell_Monitor.xlsx').read_bytes()); (p/f'Stock_Buy_Sell_Ticker_Dashboard_{s}.html').write_bytes((p/'Stock_Buy_Sell_Ticker_Dashboard.html').read_bytes())"
