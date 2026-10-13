@@ -15,22 +15,29 @@ on:
       - "ticker_dashboard.py"
       - "profile_feed.py"
       - "profile_enrichment.py"
+      - "production_integrity.py"
       - "requirements-feed.txt"
       - "requirements-monitor.txt"
       - "symbol_aliases.csv"
       - ".github/workflows/daily-prices.yml"
   schedule:
-    # Both UTC schedules cover DST; a local-time gate selects one run.
-    - cron: "30 21 * * 1-5"
-    - cron: "30 22 * * 1-5"
+    # 3:17, 3:37, 3:57, 4:17, 4:37, 4:57, 5:17, 5:37, 5:57 PM Chicago.
+    # One expression is selected for DST. Later attempts reuse verified output.
+    - cron: "17,37,57 20-22 * * 1-5"
+    - cron: "17,37,57 21-23 * * 1-5"
 
 permissions:
   contents: read
+  actions: read
+
+concurrency:
+  group: stock-monitor-production-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   prices:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -40,17 +47,19 @@ jobs:
       - name: Select scheduled local time
         id: schedule
         env:
-          EVENT_NAME: ${{ github.event_name }}
           SCHEDULE: ${{ github.event.schedule }}
         run: |
-          offset=$(TZ=America/Chicago date +%z)
-          if [[ "$EVENT_NAME" != "schedule" || ( "$offset" == "-0500" && "$SCHEDULE" == "30 21 * * 1-5" ) || ( "$offset" == "-0600" && "$SCHEDULE" == "30 22 * * 1-5" ) ]]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          fi
+          python production_integrity.py window
       - run: pip install -r requirements-feed.txt
         if: steps.schedule.outputs.run == 'true'
-      - name: Download and validate prices
+      - name: Check for a verified current-session report
+        id: readiness
         if: steps.schedule.outputs.run == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python production_integrity.py probe
+      - name: Download and validate prices
+        if: steps.readiness.outputs.refresh == 'true'
         env:
           TIINGO_API_KEY: ${{ secrets.TIINGO_API_KEY }}
         run: |
@@ -58,27 +67,36 @@ jobs:
           set -o pipefail
           python price_feed.py 2>&1 | tee outputs/run.log
       - name: Calculate and export validated monitor
-        if: steps.schedule.outputs.run == 'true'
+        if: steps.readiness.outputs.refresh == 'true'
         run: |
           python buy_sell_monitor.py --feed outputs --universe tickers.csv --output outputs/monitor_results.json
           python profile_feed.py --input outputs/monitor_results.json --output outputs/monitor_results.json --profiles outputs/profiles.json
           python export_monitor.py outputs/monitor_results.json outputs/Stock_Buy_Sell_Monitor.xlsx
           python ticker_dashboard.py outputs/monitor_results.json outputs/Stock_Buy_Sell_Ticker_Dashboard.html
           python -c "import json,pathlib; r=json.load(open('outputs/monitor_results.json')); s=r['session']; p=pathlib.Path('outputs'); (p/f'Stock_Buy_Sell_Monitor_{s}.xlsx').write_bytes((p/'Stock_Buy_Sell_Monitor.xlsx').read_bytes()); (p/f'Stock_Buy_Sell_Ticker_Dashboard_{s}.html').write_bytes((p/'Stock_Buy_Sell_Ticker_Dashboard.html').read_bytes())"
+          python production_integrity.py mark
       - name: Report links and coverage
-        if: success() && steps.schedule.outputs.run == 'true'
+        if: success() && steps.readiness.outputs.refresh == 'true'
         run: |
           python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
           import json
           r=json.load(open('outputs/monitor_results.json'))
           print(f"## Stock Buy/Sell Monitor — {r['session']}")
           print(f"Price coverage: {r['counts']['Usable']}/{r['counts']['Expected']}. Download the stock-price-feed artifact below for the Excel monitor and interactive ticker dashboard.")
-          print("The dashboard includes every universe ticker, two support/resistance bands, deeper historical evidence, Win%/suggested price, and separate MA references. Daily-close snapshot; not streaming prices.")
+          print("Freshness, universe, input/code hashes and both deliverables were verified before ready.json was created. Download the report artifact; the small stock-monitor-ready artifact identifies the completed generation run. Retry no-op runs have no report artifact.")
           PY
       - uses: actions/upload-artifact@v4
-        if: always() && steps.schedule.outputs.run == 'true'
+        if: always() && steps.readiness.outputs.refresh == 'true'
         with:
           name: stock-price-feed
           path: outputs/
+          retention-days: 30
+          if-no-files-found: error
+      - name: Publish verified readiness record
+        uses: actions/upload-artifact@v4
+        if: success() && steps.readiness.outputs.refresh == 'true'
+        with:
+          name: stock-monitor-ready
+          path: outputs/ready.json
           retention-days: 30
           if-no-files-found: error

@@ -16,7 +16,9 @@ The scheduled ChatGPT Stock Buy/Sell Monitor should read the latest successful a
 
 ## Production and reproduction
 
-Daily stock prices starts at approximately 4:30 PM America/Chicago through two DST-aware UTC schedules. GitHub can delay scheduled jobs. One job downloads, validates, calculates and exports the complete artifact before the intended 5 PM report. Failed jobs retain diagnostic artifacts; these are not successful current reports.
+Daily stock prices has nine weekday opportunities at 3:17, 3:37, 3:57, 4:17, 4:37, 4:57, 5:17, 5:37 and 5:57 PM America/Chicago, using paired DST-aware UTC schedules. Runs are serialized. A later attempt skips generation only after finding a verified current-session readiness record from the same release with an uploaded report. Lookup failure triggers generation. Push/manual runs always refresh. GitHub can delay or drop cron events; these retries improve resilience but cannot guarantee the 5 PM deadline without an independent timer.
+
+After generation, `production_integrity.py` validates freshness, universe, usable price dates, input/code hashes, both dated exports, workbook rows and dashboard data before creating `ready.json`. The `stock-monitor-ready` artifact is published only after the full report upload succeeds. The read-only Verify published stock monitor workflow tests actual artifact reuse. Failed jobs retain diagnostics but never publish a verified readiness marker. ChatGPT delivery reads verified artifacts; it does not need to initiate GitHub writes. Successful retry no-op runs contain no new report artifact, so consumers must search for the actual producing run.
 
 Use Python 3.12 in an isolated environment:
 
