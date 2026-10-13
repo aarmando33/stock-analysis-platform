@@ -21,10 +21,11 @@ on:
       - "symbol_aliases.csv"
       - ".github/workflows/daily-prices.yml"
   schedule:
-    # 3:17, 3:37, 3:57, 4:17, 4:37, 4:57, 5:17, 5:37, 5:57 PM Chicago.
-    # One expression is selected for DST. Later attempts reuse verified output.
-    - cron: "17,37,57 20-22 * * 1-5"
-    - cron: "17,37,57 21-23 * * 1-5"
+    # Wake every 20 minutes from 11:17 AM through 5:57 PM Chicago.
+    # Fast early runs exit before provider work. Delayed wake-ups can refresh
+    # only after 3:05 PM. The nine post-close slots reuse verified output.
+    - cron: "17,37,57 16-22 * * 1-5"
+    - cron: "17,37,57 17-23 * * 1-5"
 
 permissions:
   contents: read

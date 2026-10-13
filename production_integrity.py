@@ -13,8 +13,8 @@ import urllib.error
 from zipfile import ZipFile
 from zoneinfo import ZoneInfo
 
-SUMMER_CRON='17,37,57 20-22 * * 1-5'
-WINTER_CRON='17,37,57 21-23 * * 1-5'
+SUMMER_CRON='17,37,57 16-22 * * 1-5'
+WINTER_CRON='17,37,57 17-23 * * 1-5'
 REPORT_ARTIFACT='stock-price-feed'
 READY_ARTIFACT='stock-monitor-ready'
 
@@ -22,7 +22,11 @@ def scheduled_window(event,schedule,now=None):
     if event!='schedule':return True
     local=(now or datetime.now(timezone.utc)).astimezone(ZoneInfo('America/Chicago'))
     chosen=SUMMER_CRON if local.utcoffset().total_seconds()==-18000 else WINTER_CRON
-    return schedule==chosen
+    # Early wake-ups absorb observed multi-hour GitHub dispatch delays. A fast
+    # early run exits before dependency/provider work; delayed runs may refresh
+    # only after the regular close, using latest_session() again before marking.
+    after_close=(local.hour,local.minute)>=(15,5)
+    return schedule==chosen and local.weekday()<5 and after_close
 
 def output(name,value):
     with open(os.environ['GITHUB_OUTPUT'],'a',encoding='utf8') as f:

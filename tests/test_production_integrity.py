@@ -26,6 +26,10 @@ class ProductionIntegrity(unittest.TestCase):
         self.assertTrue(scheduled_window('schedule',WINTER_CRON,winter))
         self.assertFalse(scheduled_window('schedule',SUMMER_CRON,winter))
         self.assertTrue(scheduled_window('workflow_dispatch','',summer))
+        self.assertFalse(scheduled_window('schedule',SUMMER_CRON,summer.replace(hour=16)))
+        self.assertFalse(scheduled_window('schedule',SUMMER_CRON,summer.replace(hour=20,minute=4)))
+        self.assertFalse(scheduled_window('schedule',WINTER_CRON,winter.replace(hour=17)))
+        self.assertFalse(scheduled_window('schedule',SUMMER_CRON,summer.replace(day=10)))
         # A delayed scheduled attempt remains valid, even after the delivery hour.
         self.assertTrue(scheduled_window('schedule',SUMMER_CRON,summer.replace(hour=23)))
 

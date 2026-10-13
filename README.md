@@ -77,6 +77,8 @@ bottom/base/strength rules still require independent historical validation.
 
 ### Workbook historical levels
 
+Schedule wake-ups also start at 11:17 AM every 20 minutes, to absorb the multi-hour dispatch delays observed in GitHub history. Fast early executions exit before provider work; scheduled generation is permitted only after 3:05 PM Chicago on a weekday, with the actual XNYS session revalidated before publishing. The ordinary post-close opportunities remain 3:17–5:57 PM. This improves the GitHub-only setup but is not an independent or guaranteed clock.
+
 Every ticker view includes S1/S2/S3 and R1/R2/R3 observed min/max bands and boundary dates, COVID and since-COVID adjusted daily low/high references and dates, plus Recent Volume and Average Volume 20D. Short/Next/Major zone rules remain unchanged. COVID is February 19–April 30, 2020 and needs full coverage; since COVID starts March 1, 2020, with later-IPO history explicitly labeled. Earlier feed bars are used only for display references; scores and zones retain the established March 1 start.
 
 Zone Details contains one row per ticker rather than four repeated identity rows. Detailed dates, tests and events remain in columns and JSON. Calculations retains complete audit evidence, with advanced columns collapsed initially. Methodology explains observation counts, when a band was knowable, basing uncertainty and the 15-name drawdown Scanner.

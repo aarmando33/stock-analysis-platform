@@ -11,6 +11,8 @@ Delivery should search completed runs with actual report/readiness artifacts, no
 
 For each delivery:
 
+Early wake-up slots run every 20 minutes from 11:17 AM until 2:57 PM Chicago to absorb observed multi-hour GitHub dispatch delays. A schedule attempt uses the actual local execution clock and exits before dependency downloads or price fetches if it starts before 3:05 PM or on a weekend. If an early wake-up is delayed until after the close, it can generate the latest completed session. Normal post-close opportunities remain 3:17 PM through 5:57 PM. The validator rechecks the XNYS cutoff before publishing; early wake-ups never authorize incomplete regular-session prices.
+
 Readiness permits delivery of an honestly labeled, verified data-limited snapshot. Unexpected missing/stale/invalid prices or failed company-profile retrievals set `retry_needed=true`, so later GitHub slots continue refreshing instead of treating missing data as complete. Intentionally unfinished crypto candles and legitimately insufficient history do not trigger needless retries. A consumer may validate a partial readiness record for delivery; production retry reuse requires `retry_needed=false`.
 
 1. Select a successful main-branch run for the latest completed XNYS session. Record the run URL and exact head SHA.
