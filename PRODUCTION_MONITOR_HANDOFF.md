@@ -3,7 +3,17 @@
 The daily GitHub `Daily stock prices` workflow is the canonical calculation/export runtime.
 Use its completed `stock-price-feed` artifact rather than recalculating the workbook inside a chat.
 
+Production has nine weekday retry slots at 3:17, 3:37, 3:57, 4:17, 4:37, 4:57, 5:17, 5:37 and 5:57 PM America/Chicago, using paired UTC cron expressions and a DST gate. Runs are serialized without canceling an active refresh. A scheduled retry skips generation only if a successful main run at the same code SHA has a verified readiness record for the latest completed XNYS session and a report artifact. Readiness lookup failure triggers fresh generation; stale or missing evidence never suppresses a refresh. Push/manual runs always generate. A 30-minute job limit leaves room for later attempts.
+
+`production_integrity.py` checks session dates, all universe members, usable counts, price/profile/universe/code hashes, dated deliverable hashes, workbook rows and dashboard cutoff/price data before producing `ready.json`. A separate `stock-monitor-ready` artifact holds this small record. The full report artifact must upload successfully before the readiness artifact is published. `Verify published stock monitor` then tests the real GitHub readiness lookup and reuse path. This job is read-only.
+
+Delivery should search completed runs with actual report/readiness artifacts, not simply the most recent successful workflow: a successful retry can be a no-op with no new artifact. Verify `ready.json` against the exact run SHA, session, run id and validator hash; verify its deliverable/report hashes after downloading the report. GitHub performs scheduled generation and retries; the ChatGPT delivery task should only read and deliver verified artifacts, avoiding unattended GitHub write approvals. A missing report still requires a clear failure notice. GitHub cron can be delayed or dropped; these retries improve resilience but do not guarantee a wall-clock deadline without an independent timer.
+
 For each delivery:
+
+Early wake-up slots run every 20 minutes from 11:17 AM until 2:57 PM Chicago to absorb observed multi-hour GitHub dispatch delays. A schedule attempt uses the actual local execution clock and exits before dependency downloads or price fetches if it starts before 3:05 PM or on a weekend. If an early wake-up is delayed until after the close, it can generate the latest completed session. Normal post-close opportunities remain 3:17 PM through 5:57 PM. The validator rechecks the XNYS cutoff before publishing; early wake-ups never authorize incomplete regular-session prices.
+
+Readiness permits delivery of an honestly labeled, verified data-limited snapshot. Unexpected missing/stale/invalid prices or failed company-profile retrievals set `retry_needed=true`, so later GitHub slots continue refreshing instead of treating missing data as complete. Intentionally unfinished crypto candles and legitimately insufficient history do not trigger needless retries. A consumer may validate a partial readiness record for delivery; production retry reuse requires `retry_needed=false`.
 
 1. Select a successful main-branch run for the latest completed XNYS session. Record the run URL and exact head SHA.
 2. Require `price_audit.json` and `monitor_results.json` to agree with that session. Report any missing/stale/invalid symbols and coverage counts; never present an older artifact as today's report.

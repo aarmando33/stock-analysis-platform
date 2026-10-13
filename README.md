@@ -16,7 +16,9 @@ The scheduled ChatGPT Stock Buy/Sell Monitor should read the latest successful a
 
 ## Production and reproduction
 
-Daily stock prices starts at approximately 4:30 PM America/Chicago through two DST-aware UTC schedules. GitHub can delay scheduled jobs. One job downloads, validates, calculates and exports the complete artifact before the intended 5 PM report. Failed jobs retain diagnostic artifacts; these are not successful current reports.
+Daily stock prices has nine weekday opportunities at 3:17, 3:37, 3:57, 4:17, 4:37, 4:57, 5:17, 5:37 and 5:57 PM America/Chicago, using paired DST-aware UTC schedules. Runs are serialized. A later attempt skips generation only after finding a verified current-session readiness record from the same release with an uploaded report. Lookup failure triggers generation. Push/manual runs always refresh. GitHub can delay or drop cron events; these retries improve resilience but cannot guarantee the 5 PM deadline without an independent timer.
+
+After generation, `production_integrity.py` validates freshness, universe, usable price dates, input/code hashes, both dated exports, workbook rows and dashboard data before creating `ready.json`. The `stock-monitor-ready` artifact is published only after the full report upload succeeds. The read-only Verify published stock monitor workflow tests actual artifact reuse. Failed jobs retain diagnostics but never publish a verified readiness marker. ChatGPT delivery reads verified artifacts; it does not need to initiate GitHub writes. Successful retry no-op runs contain no new report artifact, so consumers must search for the actual producing run.
 
 Use Python 3.12 in an isolated environment:
 
@@ -74,6 +76,8 @@ technical export. Range-position percentages are not probabilities of profit;
 bottom/base/strength rules still require independent historical validation.
 
 ### Workbook historical levels
+
+Schedule wake-ups also start at 11:17 AM every 20 minutes, to absorb the multi-hour dispatch delays observed in GitHub history. Fast early executions exit before provider work; scheduled generation is permitted only after 3:05 PM Chicago on a weekday, with the actual XNYS session revalidated before publishing. The ordinary post-close opportunities remain 3:17–5:57 PM. This improves the GitHub-only setup but is not an independent or guaranteed clock.
 
 Every ticker view includes S1/S2/S3 and R1/R2/R3 observed min/max bands and boundary dates, COVID and since-COVID adjusted daily low/high references and dates, plus Recent Volume and Average Volume 20D. Short/Next/Major zone rules remain unchanged. COVID is February 19–April 30, 2020 and needs full coverage; since COVID starts March 1, 2020, with later-IPO history explicitly labeled. Earlier feed bars are used only for display references; scores and zones retain the established March 1 start.
 

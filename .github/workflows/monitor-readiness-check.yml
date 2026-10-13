@@ -1,0 +1,51 @@
+name: Verify published stock monitor
+
+on:
+  workflow_run:
+    workflows: [Daily stock prices]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  readiness:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements-monitor.txt
+      - name: Verify published artifact and retry reuse
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MONITOR_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          MONITOR_RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          python - <<'PY'
+          import os,time
+          from pathlib import Path
+          from buy_sell_monitor import latest_session
+          from production_integrity import GitHub,expected_symbols,prior_ready,REPORT_ARTIFACT
+          api=GitHub(os.environ['GITHUB_REPOSITORY'],os.environ['GH_TOKEN'])
+          run_id=os.environ['MONITOR_RUN_ID']
+          artifacts=api.get(f'actions/runs/{run_id}/artifacts?per_page=100')['artifacts']
+          if not any(a['name']==REPORT_ARTIFACT and not a['expired'] for a in artifacts):
+              print('Schedule gate or verified reuse: no new report artifact was generated.')
+              raise SystemExit(0)
+          record=None
+          for attempt in range(3):
+              record=prior_ready(api,latest_session(),os.environ['MONITOR_HEAD_SHA'],expected_symbols(Path('.')),allow_partial=True)
+              if record:break
+              if attempt<2:time.sleep(10)
+          if not record:raise RuntimeError('A successful generation has no verified current-session readiness record.')
+          print(f"Verified published readiness: session {record['session']}, generation run {record['run_id']}, {record['verified_hashes']} hashes; further retry needed={record['retry_needed']}.")
+          PY

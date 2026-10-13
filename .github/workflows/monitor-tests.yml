@@ -10,12 +10,14 @@ on:
       - 'ticker_dashboard.py'
       - 'profile_feed.py'
       - 'profile_enrichment.py'
+      - 'production_integrity.py'
       - 'export_monitor.mjs'
       - 'scripts/**'
       - 'price_feed.py'
       - 'requirements-feed.txt'
       - 'symbol_aliases.csv'
       - '.github/workflows/daily-prices.yml'
+      - '.github/workflows/monitor-readiness-check.yml'
       - 'RUN_MONITOR.ps1'
       - 'tests/**'
       - 'requirements-monitor.txt'
@@ -31,12 +33,14 @@ on:
       - 'ticker_dashboard.py'
       - 'profile_feed.py'
       - 'profile_enrichment.py'
+      - 'production_integrity.py'
       - 'export_monitor.mjs'
       - 'scripts/**'
       - 'price_feed.py'
       - 'requirements-feed.txt'
       - 'symbol_aliases.csv'
       - '.github/workflows/daily-prices.yml'
+      - '.github/workflows/monitor-readiness-check.yml'
       - 'RUN_MONITOR.ps1'
       - 'tests/**'
       - 'requirements-monitor.txt'
@@ -67,6 +71,7 @@ jobs:
             ticker_dashboard.py
             profile_feed.py
             profile_enrichment.py
+            production_integrity.py
             export_monitor.mjs
             RUN_MONITOR.ps1
             requirements-monitor.txt
