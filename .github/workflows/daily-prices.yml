@@ -35,6 +35,7 @@ permissions:
 concurrency:
   group: stock-monitor-production-${{ github.ref }}
   cancel-in-progress: false
+  queue: max
 
 jobs:
   prices:
