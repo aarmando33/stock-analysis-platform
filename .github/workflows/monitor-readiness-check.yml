@@ -12,7 +12,6 @@ permissions:
 
 jobs:
   readiness:
-    if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -29,23 +28,27 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           MONITOR_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
           MONITOR_RUN_ID: ${{ github.event.workflow_run.id }}
+          MONITOR_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
         run: |
           python - <<'PY'
           import os,time
           from pathlib import Path
           from buy_sell_monitor import latest_session
-          from production_integrity import GitHub,expected_symbols,prior_ready,REPORT_ARTIFACT
+          from production_integrity import GitHub,expected_symbols,verify_generation,window_plan
           api=GitHub(os.environ['GITHUB_REPOSITORY'],os.environ['GH_TOKEN'])
           run_id=os.environ['MONITOR_RUN_ID']
-          artifacts=api.get(f'actions/runs/{run_id}/artifacts?per_page=100')['artifacts']
-          if not any(a['name']==REPORT_ARTIFACT and not a['expired'] for a in artifacts):
-              print('Schedule gate or verified reuse: no new report artifact was generated.')
-              raise SystemExit(0)
-          record=None
+          if os.environ['MONITOR_CONCLUSION']!='success':
+              raise RuntimeError('Production workflow failed or was cancelled; inspect its diagnostics.')
+          result=None
           for attempt in range(3):
-              record=prior_ready(api,latest_session(),os.environ['MONITOR_HEAD_SHA'],expected_symbols(Path('.')),allow_partial=True)
-              if record:break
-              if attempt<2:time.sleep(10)
-          if not record:raise RuntimeError('A successful generation has no verified current-session readiness record.')
-          print(f"Verified published readiness: session {record['session']}, generation run {record['run_id']}, {record['verified_hashes']} hashes; further retry needed={record['retry_needed']}.")
+              try:
+                  result=verify_generation(api,run_id,os.environ['MONITOR_HEAD_SHA'],latest_session(),expected_symbols(Path('.')),window_plan('schedule'))
+                  break
+              except ValueError:
+                  if attempt==2:raise
+                  time.sleep(10)
+          print(result)
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:
+              f.write('Production readiness: '+str(result)+'\n')
           PY
+
