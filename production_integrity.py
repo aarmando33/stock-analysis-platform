@@ -25,7 +25,7 @@ def window_plan(event,now=None,calendar=None):
     if now.tzinfo is None:raise ValueError('Timezone-aware run clock required')
     if event!='schedule':return {'run':True,'wait_seconds':0,'reason':'Explicit refresh'}
     local=now.astimezone(ZoneInfo('America/Chicago'))
-    if local.weekday()>=5 or local.hour<13 or local.hour>=22:
+    if local.weekday()>=5 or local.hour<13 or local.hour>=21:
         return {'run':False,'wait_seconds':0,'reason':'Outside local production window'}
     if calendar is None:
         import exchange_calendars as xc
