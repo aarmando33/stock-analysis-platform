@@ -1,12 +1,13 @@
 """Gate scheduled retries and attest to a fresh, intact production artifact."""
 import argparse
 import csv
-from datetime import datetime,timezone
+from datetime import datetime,timezone,timedelta
 import hashlib
 import io
 import json
 import math
 import os
+import time
 from pathlib import Path
 import urllib.request
 import urllib.error
@@ -18,15 +19,39 @@ WINTER_CRON='17,37,57 17-23 * * 1-5'
 REPORT_ARTIFACT='stock-price-feed'
 READY_ARTIFACT='stock-monitor-ready'
 
+def window_plan(event,now=None,calendar=None):
+    """Use the exchange session, never the cron expression, as the clock."""
+    now=now or datetime.now(timezone.utc)
+    if now.tzinfo is None:raise ValueError('Timezone-aware run clock required')
+    if event!='schedule':return {'run':True,'wait_seconds':0,'reason':'Explicit refresh'}
+    local=now.astimezone(ZoneInfo('America/Chicago'))
+    if local.weekday()>=5 or local.hour<13 or local.hour>=22:
+        return {'run':False,'wait_seconds':0,'reason':'Outside local production window'}
+    if calendar is None:
+        import exchange_calendars as xc
+        calendar=xc.get_calendar('XNYS')
+    session=local.date().isoformat()
+    if not calendar.is_session(session):
+        return {'run':False,'wait_seconds':0,'reason':'XNYS holiday'}
+    ready_at=calendar.session_close(session).to_pydatetime()+timedelta(minutes=10)
+    delay=max(0,int(math.ceil((ready_at-now).total_seconds())))
+    if delay>130*60:raise ValueError('Wait exceeds bounded exchange-close window')
+    return {'run':True,'wait_seconds':delay,'session':session,
+            'reason':'Wait for close and provider settlement' if delay else 'Completed exchange session'}
+
 def scheduled_window(event,schedule,now=None):
-    if event!='schedule':return True
-    local=(now or datetime.now(timezone.utc)).astimezone(ZoneInfo('America/Chicago'))
-    chosen=SUMMER_CRON if local.utcoffset().total_seconds()==-18000 else WINTER_CRON
-    # Early wake-ups absorb observed multi-hour GitHub dispatch delays. A fast
-    # early run exits before dependency/provider work; delayed runs may refresh
-    # only after the regular close, using latest_session() again before marking.
-    after_close=(local.hour,local.minute)>=(15,5)
-    return schedule==chosen and local.weekday()<5 and after_close
+    # The payload is diagnostic only. Rejecting the other seasonal cron lost
+    # usable wake-ups and caused unnecessary late generation in October.
+    return window_plan(event,now)['run']
+
+def wait_for_close(plan,sleep=time.sleep,clock=None):
+    if not plan['run']:return
+    clock=clock or (lambda:datetime.now(timezone.utc))
+    deadline=clock()+timedelta(seconds=plan['wait_seconds'])
+    while True:
+        remaining=(deadline-clock()).total_seconds()
+        if remaining<=0:break
+        sleep(min(60,remaining))
 
 def output(name,value):
     with open(os.environ['GITHUB_OUTPUT'],'a',encoding='utf8') as f:
@@ -149,7 +174,7 @@ class GitHub:
         with urllib.request.urlopen(request,timeout=30) as response:return json.load(response)
 
 def prior_ready(api,session,head,symbols,allow_partial=False):
-    runs=api.get('actions/workflows/daily-prices.yml/runs?branch=main&status=success&per_page=30')['workflow_runs']
+    runs=api.get('actions/workflows/daily-prices.yml/runs?branch=main&status=success&per_page=100')['workflow_runs']
     for run in runs:
         if run['head_sha']!=head or run['conclusion']!='success' or run['head_branch']!='main':continue
         artifacts=api.get(f"actions/runs/{run['id']}/artifacts?per_page=100")['artifacts']
@@ -164,6 +189,25 @@ def prior_ready(api,session,head,symbols,allow_partial=False):
             if ready_matches(record,session,head,run['id'],symbols,allow_partial=allow_partial):return record
     return None
 
+def verify_generation(api,run_id,head,session,symbols,plan):
+    """Validate this producing run; another good run cannot hide its failure."""
+    artifacts=api.get(f'actions/runs/{run_id}/artifacts?per_page=100')['artifacts']
+    present=[a for a in artifacts if not a['expired']]
+    reports=[a for a in present if a['name']==REPORT_ARTIFACT and a['size_in_bytes']>0]
+    if not reports:
+        if not plan['run'] or plan['wait_seconds']:
+            return {'state':'NOT_DUE','reason':plan['reason']}
+        reused=prior_ready(api,session,head,symbols,allow_partial=True)
+        if reused:return {'state':'REUSED','record':reused}
+        raise ValueError('Post-close run produced no report and no current verified report exists')
+    for marker in sorted((a for a in present if a['name']==READY_ARTIFACT),key=lambda a:a['id'],reverse=True):
+        with ZipFile(io.BytesIO(api.get(f"actions/artifacts/{marker['id']}/zip",binary=True))) as archive:
+            if archive.getinfo('ready.json').file_size>1048576:raise ValueError('Oversized readiness record')
+            record=json.loads(archive.read('ready.json'))
+        if ready_matches(record,session,head,run_id,symbols,allow_partial=True):
+            return {'state':'READY','record':record}
+    raise ValueError('This producing run has no matching current readiness record')
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('mode',choices=['window','probe','mark'])
@@ -171,7 +215,13 @@ def main():
     args=parser.parse_args();root=Path(__file__).resolve().parent
     event=os.environ.get('GITHUB_EVENT_NAME','manual')
     if args.mode=='window':
-        output('run',scheduled_window(event,os.environ.get('SCHEDULE','')));return
+        plan=window_plan(event)
+        print(json.dumps(plan),flush=True)
+        summary=os.environ.get('GITHUB_STEP_SUMMARY')
+        if summary:
+            with open(summary,'a',encoding='utf8') as f:f.write('Production clock: '+json.dumps(plan)+'\n')
+        wait_for_close(plan)
+        output('run',plan['run']);return
     from buy_sell_monitor import latest_session
     session=latest_session();symbols=expected_symbols(root)
     if args.mode=='probe':
@@ -192,3 +242,4 @@ def main():
     print(f"Ready: {session}; {record['counts']['Usable']}/{len(symbols)} usable; {record['verified_hashes']} verified hashes.")
 
 if __name__=='__main__':main()
+

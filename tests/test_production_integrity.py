@@ -5,12 +5,12 @@ import tempfile
 import os
 import unittest
 from unittest.mock import patch
-from datetime import datetime,timezone
+from datetime import datetime,timezone,timedelta
 from zipfile import ZipFile
 from openpyxl import Workbook
 from production_integrity import (SUMMER_CRON,WINTER_CRON,scheduled_window,ready_matches,
                                   prior_ready,validate_output,digest)
-from production_integrity import main
+from production_integrity import main,window_plan,wait_for_close,verify_generation
 
 class ProductionIntegrity(unittest.TestCase):
     def record(self,run=7,session='2026-10-12'):
@@ -22,16 +22,63 @@ class ProductionIntegrity(unittest.TestCase):
         summer=datetime(2026,10,12,20,17,tzinfo=timezone.utc)
         winter=datetime(2026,12,1,21,17,tzinfo=timezone.utc)
         self.assertTrue(scheduled_window('schedule',SUMMER_CRON,summer))
-        self.assertFalse(scheduled_window('schedule',WINTER_CRON,summer))
+        self.assertTrue(scheduled_window('schedule',WINTER_CRON,summer))
         self.assertTrue(scheduled_window('schedule',WINTER_CRON,winter))
-        self.assertFalse(scheduled_window('schedule',SUMMER_CRON,winter))
+        self.assertTrue(scheduled_window('schedule',SUMMER_CRON,winter))
         self.assertTrue(scheduled_window('workflow_dispatch','',summer))
         self.assertFalse(scheduled_window('schedule',SUMMER_CRON,summer.replace(hour=16)))
-        self.assertFalse(scheduled_window('schedule',SUMMER_CRON,summer.replace(hour=20,minute=4)))
+        self.assertTrue(scheduled_window('schedule',SUMMER_CRON,summer.replace(hour=20,minute=4)))
         self.assertFalse(scheduled_window('schedule',WINTER_CRON,winter.replace(hour=17)))
         self.assertFalse(scheduled_window('schedule',SUMMER_CRON,summer.replace(day=10)))
         # A delayed scheduled attempt remains valid, even after the delivery hour.
         self.assertTrue(scheduled_window('schedule',SUMMER_CRON,summer.replace(hour=23)))
+
+    def test_early_runner_waits_for_close_instead_of_discarding_wakeup(self):
+        now=datetime(2026,10,16,18,33,tzinfo=timezone.utc)
+        plan=window_plan('schedule',now)
+        self.assertTrue(plan['run']);self.assertEqual(plan['session'],'2026-10-16')
+        self.assertEqual(plan['wait_seconds'],97*60)
+        current=[now];sleeps=[]
+        def sleep(seconds):
+            sleeps.append(seconds);current[0]+=timedelta(seconds=seconds)
+        wait_for_close(plan,sleep=sleep,clock=lambda:current[0])
+        self.assertEqual(current[0],datetime(2026,10,16,20,10,tzinfo=timezone.utc))
+        self.assertLessEqual(max(sleeps),60)
+
+    def test_exchange_holiday_early_close_dst_and_late_recovery(self):
+        self.assertFalse(window_plan('schedule',datetime(2026,12,25,21,tzinfo=timezone.utc))['run'])
+        # Thanksgiving Friday closes at noon Chicago; no normal-close wait.
+        early=window_plan('schedule',datetime(2026,11,27,19,7,tzinfo=timezone.utc))
+        self.assertTrue(early['run']);self.assertEqual(early['wait_seconds'],0)
+        winter=window_plan('schedule',datetime(2026,12,1,19,7,tzinfo=timezone.utc))
+        self.assertEqual(winter['wait_seconds'],123*60)
+        # Friday's last retry is already Saturday in UTC.
+        late=window_plan('schedule',datetime(2026,10,17,2,47,tzinfo=timezone.utc))
+        self.assertEqual(late['session'],'2026-10-16');self.assertTrue(late['run'])
+        with self.assertRaisesRegex(ValueError,'Timezone-aware'):
+            window_plan('schedule',datetime(2026,10,16,20))
+
+    def test_postclose_noop_is_not_reported_as_healthy_without_a_report(self):
+        class API:
+            def get(self,path,binary=False):return {'artifacts':[]} if '/artifacts?' in path else {'workflow_runs':[]}
+        plan={'run':True,'wait_seconds':0,'reason':'Completed exchange session'}
+        with self.assertRaisesRegex(ValueError,'no report'):
+            verify_generation(API(),9,'head','2026-10-16',['TEST'],plan)
+        pre={**plan,'run':False,'reason':'XNYS holiday'}
+        self.assertEqual(verify_generation(API(),9,'head','2026-10-16',['TEST'],pre)['state'],'NOT_DUE')
+
+    def test_another_good_run_cannot_hide_a_broken_producing_run(self):
+        owner=self
+        class API:
+            def get(self,path,binary=False):
+                if '/artifacts?' in path:return {'artifacts':[
+                    {'id':1,'name':'stock-price-feed','expired':False,'size_in_bytes':100},
+                    {'id':2,'name':'stock-monitor-ready','expired':False}]}
+                return owner.zip(owner.record(run=7))
+        plan={'run':True,'wait_seconds':0,'reason':'Completed exchange session'}
+        with self.assertRaisesRegex(ValueError,'This producing run'):
+            verify_generation(API(),9,'head','2026-10-12',['TEST'],plan)
+        self.assertEqual(verify_generation(API(),7,'head','2026-10-12',['TEST'],plan)['state'],'READY')
 
     def test_stale_wrong_release_duplicate_and_empty_records_do_not_skip_refresh(self):
         record=self.record()
@@ -135,3 +182,4 @@ class ProductionIntegrity(unittest.TestCase):
                 validate_output(folder,root,'2026-10-12',['TEST'])
 
 if __name__=='__main__':unittest.main()
+
