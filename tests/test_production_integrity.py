@@ -53,8 +53,9 @@ class ProductionIntegrity(unittest.TestCase):
         winter=window_plan('schedule',datetime(2026,12,1,19,7,tzinfo=timezone.utc))
         self.assertEqual(winter['wait_seconds'],123*60)
         # Friday's last retry is already Saturday in UTC.
-        late=window_plan('schedule',datetime(2026,10,17,2,47,tzinfo=timezone.utc))
+        late=window_plan('schedule',datetime(2026,10,17,1,47,tzinfo=timezone.utc))
         self.assertEqual(late['session'],'2026-10-16');self.assertTrue(late['run'])
+        self.assertFalse(window_plan('schedule',datetime(2026,10,17,2,7,tzinfo=timezone.utc))['run'])
         with self.assertRaisesRegex(ValueError,'Timezone-aware'):
             window_plan('schedule',datetime(2026,10,16,20))
 

@@ -23,7 +23,8 @@ on:
   schedule:
     # One UTC schedule serves both seasons; the exchange calendar gates work.
     # An afternoon runner stays alive until close + 10 minutes, rather than
-    # hoping another cron will arrive. Late retries continue to 9:47 PM CST.
+    # hoping another cron will arrive. A local 9 PM gate leaves time for the
+    # bounded generation steps before the final 10 PM delivery check.
     - cron: "7,27,47 18-23 * * 1-5"
     - cron: "7,27,47 0-3 * * 2-6"
 
@@ -59,6 +60,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: python production_integrity.py probe
       - name: Download and validate prices
+        timeout-minutes: 10
         if: steps.readiness.outputs.refresh == 'true'
         env:
           TIINGO_API_KEY: ${{ secrets.TIINGO_API_KEY }}
@@ -73,6 +75,7 @@ jobs:
             sleep 60
           done
       - name: Calculate and export validated monitor
+        timeout-minutes: 15
         if: steps.readiness.outputs.refresh == 'true'
         run: |
           python buy_sell_monitor.py --feed outputs --universe tickers.csv --output outputs/monitor_results.json
